@@ -10,19 +10,19 @@ It does **not** create a vector index, read OHS SQLite databases, or duplicate i
 2. `OhsMcpClient` queries the configured stateless Streamable HTTP MCP endpoints concurrently through Obsidian's desktop HTTP API, avoiding browser CORS requirements for loopback services.
 3. Native OHS cross-encoder reranking is enabled by default for each vault's hybrid candidates. The OHS service owns the reranker model and cache; Hybrid Chat sends only the MCP `rerank` flag.
 4. Explicit YAML directives map to OHS frontmatter filters: `@property(status=todo)` includes an exact value, `@property(status!=done)` excludes one, and `@property(publication_date)` requests a property without filtering.
-5. `FederatedRetriever` merges the resulting per-vault ranks with reciprocal-rank fusion. Raw OHS scores are never compared across vaults, and a diversity pass gives each healthy vault a chance to contribute.
+5. Follow-up retrieval includes a bounded excerpt of the three most recent user questions, allowing references such as “she”, “that project”, or “the second one” to retain their conversational subject. Assistant answers are not sent to OHS. `FederatedRetriever` then merges the resulting per-vault ranks with reciprocal-rank fusion. Raw OHS scores are never compared across vaults, and a diversity pass gives each healthy vault a chance to contribute.
 6. Only the globally selected note paths are sent to OHS `read`; unavailable endpoints become visible partial failures.
 7. `ContextPacker` applies per-note and total character limits. Each source is namespaced as `vault_id::vault/relative/path.md`. Only explicitly requested YAML properties from the currently open vault are appended; current OHS `read` responses do not expose arbitrary cross-vault frontmatter.
 8. A fresh local/UTC timestamp and optional custom instructions are added to the protected grounding prompt. No datetime MCP call or model tool selection is required.
-9. `OpenAiCompatibleChatClient` sends ordinary messages to `/v1/chat/completions` and streams SSE output. Retrieval never depends on model tool-calling.
+9. `OpenAiCompatibleChatClient` sends the current question and a bounded recent transcript to `/v1/chat/completions`, then streams SSE output. A new chat starts with empty conversational memory. Retrieval never depends on model tool-calling.
 10. Citations in the current vault open through the Obsidian workspace API. Other-vault citations use validated, percent-encoded `obsidian://open?vault=…&file=…` URIs.
 
 The source is split into the OHS client, federated retriever, rank fusion, context packer, OpenAI-compatible client, citation mapper, settings, and session/UI layers.
 
 ## Privacy boundaries
 
-- OHS endpoints may be local or remote. Every selected endpoint receives the user’s query.
-- The configured chat provider receives the packed source text and recent chat history. A loopback provider can keep generation local; a cloud provider sends that data to the provider.
+- OHS endpoints may be local or remote. Every selected endpoint receives the current query and, on follow-up turns, a bounded excerpt containing up to three earlier user questions. Assistant answers are not included in OHS queries.
+- The configured chat provider receives the packed source text and up to 12 recent non-empty chat messages within a 12,000-character transcript budget. The current question is always retained. A loopback provider can keep generation local; a cloud provider sends that data to the provider.
 - Remote chat endpoints must use HTTPS. Plain HTTP is accepted only for loopback hosts.
 - API keys are stored by Obsidian `SecretStorage` through `SecretComponent`. Plugin data contains only secret identifiers.
 - Chat sessions and retrieved source text are stored in this plugin’s `data.json` so sessions survive restarts. If the vault configuration is synchronized, that plugin data may synchronize too.

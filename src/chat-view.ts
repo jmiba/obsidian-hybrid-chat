@@ -16,6 +16,7 @@ import { buildObsidianOpenUri, openCitation } from "./citation-mapper";
 import { appendRequestedProperties, parsePropertyDirectives } from "./property-directives";
 import { chatWorkLabel, shouldShowSources, type ChatWorkPhase } from "./chat-progress";
 import { messageClipboardText, removeMessageById } from "./chat-message-actions";
+import { buildConversationSearchQuery, buildRecentChatMessages } from "./conversation-context";
 
 export const VIEW_TYPE_HYBRID_CHAT = "obsidian-hybrid-chat-view";
 
@@ -158,8 +159,15 @@ export class HybridChatView extends ItemView {
     let assistantContent = this.messagesEl.querySelector(`[data-message-id="${assistantMessage.id}"] .ohc-message-content`);
     try {
       const propertyDirectives = parsePropertyDirectives(question);
-      const retrieval = await this.plugin.retriever.retrieve(
+      const previousQuestions = session.messages
+        .filter((message) => message.role === "user" && message.id !== userMessage.id)
+        .map((message) => parseSearchText(message.content));
+      const retrievalQuery = buildConversationSearchQuery(
         propertyDirectives.searchQuery,
+        previousQuestions,
+      );
+      const retrieval = await this.plugin.retriever.retrieve(
+        retrievalQuery,
         this.plugin.settings.ohsEndpoints,
         this.selection,
         this.app.vault.getName(),
@@ -193,10 +201,7 @@ export class HybridChatView extends ItemView {
       this.sourcesRevealed.add(assistantMessage.id);
       await this.renderMessages();
       assistantContent = this.messagesEl.querySelector(`[data-message-id="${assistantMessage.id}"] .ohc-message-content`);
-      const history = session.messages
-        .filter((message) => message !== assistantMessage)
-        .slice(-12)
-        .map((message) => ({ role: message.role, content: message.content }));
+      const history = buildRecentChatMessages(session.messages, assistantMessage.id);
       const apiKey = profile.apiKeySecretId
         ? this.app.secretStorage.getSecret(profile.apiKeySecretId) ?? ""
         : "";
@@ -401,6 +406,14 @@ export class HybridChatView extends ItemView {
     setIcon(button, icon);
     button.addEventListener("click", handler);
     return button;
+  }
+}
+
+function parseSearchText(question: string): string {
+  try {
+    return parsePropertyDirectives(question).searchQuery;
+  } catch {
+    return question;
   }
 }
 
