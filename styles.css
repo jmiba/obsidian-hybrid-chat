@@ -1,0 +1,181 @@
+.ohc-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.ohc-header,
+.ohc-scope,
+.ohc-composer {
+  padding: var(--size-4-2);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ohc-title {
+  font-weight: var(--font-semibold);
+  margin-bottom: var(--size-4-2);
+}
+
+.ohc-controls,
+.ohc-scope-row,
+.ohc-composer {
+  display: flex;
+  gap: var(--size-4-2);
+  align-items: center;
+}
+
+.ohc-session-select,
+.ohc-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.ohc-scope-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.ohc-vault-choices {
+  display: grid;
+  gap: var(--size-4-1);
+  margin-top: var(--size-4-2);
+}
+
+.ohc-vault-choice {
+  display: flex;
+  gap: var(--size-4-2);
+  align-items: center;
+}
+
+.ohc-messages {
+  flex: 1;
+  overflow: auto;
+  padding: var(--size-4-2);
+}
+
+.ohc-message {
+  margin-bottom: var(--size-4-4);
+  padding: var(--size-4-3);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.ohc-message.is-user {
+  background: var(--background-primary-alt);
+}
+
+.ohc-message-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-2);
+}
+
+.ohc-message-role {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+}
+
+.ohc-message-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+}
+
+.ohc-message-action {
+  --icon-size: 14px;
+  color: var(--text-muted);
+  padding: 2px;
+  opacity: 0.7;
+}
+
+.ohc-message-action:hover,
+.ohc-message-action:focus-visible {
+  color: var(--text-normal);
+  opacity: 1;
+}
+
+.ohc-working {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  margin-bottom: var(--size-4-2);
+}
+
+.ohc-spinner {
+  width: 0.9em;
+  height: 0.9em;
+  flex: 0 0 auto;
+  border: 2px solid var(--interactive-accent);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: ohc-spin 0.75s linear infinite;
+}
+
+@keyframes ohc-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ohc-spinner { animation: none; }
+}
+
+.ohc-message-content > :first-child { margin-top: 0; }
+.ohc-message-content > :last-child { margin-bottom: 0; }
+
+.ohc-sources {
+  margin-top: var(--size-4-3);
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: var(--size-4-2);
+}
+
+.ohc-sources ol {
+  padding-left: var(--size-4-5);
+}
+
+.ohc-source-link {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  height: auto;
+  white-space: normal;
+  text-align: left;
+  margin: var(--size-4-1) 0;
+}
+
+.ohc-source-path,
+.ohc-no-sources {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.ohc-partial-failures {
+  color: var(--text-warning);
+  font-size: var(--font-ui-smaller);
+  margin-top: var(--size-4-2);
+}
+
+.ohc-composer {
+  border-top: 1px solid var(--background-modifier-border);
+  border-bottom: 0;
+}
+
+.ohc-input {
+  resize: vertical;
+}
+
+.ohc-send {
+  align-self: stretch;
+}
+
+.ohc-empty {
+  color: var(--text-muted);
+  padding: var(--size-4-6) var(--size-4-3);
+  text-align: center;
+}
