@@ -15,6 +15,20 @@ export interface RetrievalOptions {
   frontmatterFilters: string[];
 }
 
+export class OhsRequestTimeoutError extends Error {
+  readonly name = "OhsRequestTimeoutError";
+
+  constructor(
+    readonly stage: "search" | "read",
+    readonly timeoutMs: number,
+  ) {
+    super(
+      `OHS ${stage} timed out after ${formatTimeout(timeoutMs)}. `
+      + "Hybrid Chat stopped waiting, but OHS may still be processing the request.",
+    );
+  }
+}
+
 export class FederatedRetriever {
   constructor(private readonly ohs: OhsGateway) {}
 
@@ -32,15 +46,18 @@ export class FederatedRetriever {
     const failures: RetrievalFailure[] = [];
     const searchSettled = await Promise.allSettled(selectedEndpoints.map(async (endpoint) => ({
       endpoint,
-      results: await this.ohs.search(
-        endpoint.endpoint,
-        query,
-        options.searchLimitPerVault,
-        options.enableReranking,
-        options.frontmatterFilters,
-        signal,
-      ),
+      results: await withEndpointTimeout(endpoint, "search", signal, (requestSignal) => (
+        this.ohs.search(
+          endpoint.endpoint,
+          query,
+          options.searchLimitPerVault,
+          options.enableReranking,
+          options.frontmatterFilters,
+          requestSignal,
+        )
+      )),
     })));
+    if (signal?.aborted) throw abortError();
     const healthySearches: RankedVaultResults[] = [];
     searchSettled.forEach((settled, index) => {
       const endpoint = selectedEndpoints[index];
@@ -60,7 +77,9 @@ export class FederatedRetriever {
     const readSettled = await Promise.allSettled([...byVault].map(async ([vaultId, selected]) => {
       const endpoint = selectedEndpoints.find((item) => item.id === vaultId);
       if (!endpoint) throw new Error(`Missing endpoint ${vaultId}`);
-      const notes = await this.ohs.read(endpoint.endpoint, selected.map((item) => item.path), signal);
+      const notes = await withEndpointTimeout(endpoint, "read", signal, (requestSignal) => (
+        this.ohs.read(endpoint.endpoint, selected.map((item) => item.path), requestSignal)
+      ));
       const notesByPath = new Map(notes.filter((note) => note.found).map((note) => [note.path, note]));
       const sources: RetrievedSource[] = selected.flatMap((candidate) => {
         const note = notesByPath.get(candidate.path);
@@ -69,6 +88,7 @@ export class FederatedRetriever {
       });
       return { endpoint, sources };
     }));
+    if (signal?.aborted) throw abortError();
 
     const sources: RetrievedSource[] = [];
     readSettled.forEach((settled, index) => {
@@ -112,6 +132,51 @@ function failure(
     vaultId: endpoint.id,
     vaultDisplayName: endpoint.displayName,
     stage,
+    kind: reason instanceof OhsRequestTimeoutError ? "timeout" : "error",
     message: reason instanceof Error ? reason.message : String(reason),
   };
+}
+
+function withEndpointTimeout<T>(
+  endpoint: OhsEndpointConfig,
+  stage: "search" | "read",
+  outerSignal: AbortSignal | undefined,
+  operation: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  if (outerSignal?.aborted) return Promise.reject(abortError());
+  const controller = new AbortController();
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const finish = (callback: () => void): void => {
+      if (settled) return;
+      settled = true;
+      globalThis.clearTimeout(timeout);
+      outerSignal?.removeEventListener("abort", cancel);
+      callback();
+    };
+    const cancel = (): void => {
+      controller.abort();
+      finish(() => reject(abortError()));
+    };
+    const timeout = globalThis.setTimeout(() => {
+      controller.abort();
+      finish(() => reject(new OhsRequestTimeoutError(stage, endpoint.requestTimeoutMs)));
+    }, endpoint.requestTimeoutMs);
+    outerSignal?.addEventListener("abort", cancel, { once: true });
+    Promise.resolve()
+      .then(() => operation(controller.signal))
+      .then(
+        (value) => finish(() => resolve(value)),
+        (error: unknown) => finish(() => reject(error instanceof Error ? error : new Error(String(error)))),
+      );
+  });
+}
+
+function formatTimeout(timeoutMs: number): string {
+  const seconds = timeoutMs / 1000;
+  return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)} seconds`;
+}
+
+function abortError(): Error {
+  return new DOMException("Request canceled", "AbortError");
 }

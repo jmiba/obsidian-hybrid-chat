@@ -1,5 +1,6 @@
 import { Notice, PluginSettingTab, SecretComponent, Setting, type App } from "obsidian";
 import type HybridChatPlugin from "./main";
+import { DEFAULT_OHS_REQUEST_TIMEOUT_MS } from "./domain";
 import type {
   ChatMessage,
   ChatProviderProfile,
@@ -18,6 +19,7 @@ export function defaultSettings(currentVaultName: string): HybridChatSettings {
       displayName: currentVaultName || "Current vault",
       endpoint: "http://127.0.0.1:3939/mcp",
       obsidianVaultName: currentVaultName,
+      requestTimeoutMs: DEFAULT_OHS_REQUEST_TIMEOUT_MS,
       enabled: true,
       selectedByDefault: true,
     }],
@@ -89,6 +91,7 @@ export function sanitizeSettingsForPersistence(settings: HybridChatSettings): Hy
       displayName: endpoint.displayName,
       endpoint: endpoint.endpoint,
       obsidianVaultName: endpoint.obsidianVaultName,
+      requestTimeoutMs: endpoint.requestTimeoutMs,
       enabled: Boolean(endpoint.enabled),
       selectedByDefault: Boolean(endpoint.selectedByDefault),
     })),
@@ -166,6 +169,7 @@ export class HybridChatSettingTab extends PluginSettingTab {
         displayName: "New vault",
         endpoint: "http://127.0.0.1:3939/mcp",
         obsidianVaultName: "",
+        requestTimeoutMs: DEFAULT_OHS_REQUEST_TIMEOUT_MS,
         enabled: true,
         selectedByDefault: false,
       });
@@ -251,6 +255,16 @@ export class HybridChatSettingTab extends PluginSettingTab {
       .addText((text) => text.setValue(endpoint.obsidianVaultName).onChange(async (value) => {
         endpoint.obsidianVaultName = value.trim(); await this.plugin.saveSettings();
       }));
+    new Setting(container)
+      .setName("Request timeout (seconds)")
+      .setDesc("Maximum time Hybrid Chat waits for each OHS search or read. Timing out does not cancel database work already running inside OHS.")
+      .addText((text) => text
+        .setValue(String(Math.round(endpoint.requestTimeoutMs / 1000)))
+        .onChange(async (value) => {
+          const currentSeconds = Math.round(endpoint.requestTimeoutMs / 1000);
+          endpoint.requestTimeoutMs = boundedInteger(Number(value), 5, 600, currentSeconds) * 1000;
+          await this.plugin.saveSettings();
+        }));
     new Setting(container).setName("Enabled").addToggle((toggle) => toggle.setValue(endpoint.enabled).onChange(async (value) => {
       endpoint.enabled = value; await this.plugin.saveSettings();
     }));
@@ -300,6 +314,7 @@ function sanitizeMessage(message: ChatMessage): ChatMessage {
       vaultId: item.vaultId,
       vaultDisplayName: item.vaultDisplayName,
       stage: item.stage,
+      kind: item.kind,
       message: item.message,
     })),
     retrievalUnavailable: message.retrievalUnavailable === true,
@@ -334,6 +349,12 @@ function parseEndpoint(value: unknown): OhsEndpointConfig[] {
     displayName: asString(item.displayName).trim() || id,
     endpoint,
     obsidianVaultName: asString(item.obsidianVaultName).trim(),
+    requestTimeoutMs: boundedInteger(
+      item.requestTimeoutMs,
+      5_000,
+      600_000,
+      DEFAULT_OHS_REQUEST_TIMEOUT_MS,
+    ),
     enabled: item.enabled !== false,
     selectedByDefault: item.selectedByDefault === true,
   }];
@@ -385,6 +406,7 @@ function parseMessage(value: unknown): ChatMessage[] {
       vaultId: asString(record.vaultId),
       vaultDisplayName: asString(record.vaultDisplayName),
       stage,
+      kind: record.kind === "timeout" ? "timeout" : "error",
       message: asString(record.message),
     }];
   }) : undefined;

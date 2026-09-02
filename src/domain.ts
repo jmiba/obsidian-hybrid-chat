@@ -1,10 +1,13 @@
 export type VaultSelectionMode = "current" | "specific" | "all";
 
+export const DEFAULT_OHS_REQUEST_TIMEOUT_MS = 60_000;
+
 export interface OhsEndpointConfig {
   id: string;
   displayName: string;
   endpoint: string;
   obsidianVaultName: string;
+  requestTimeoutMs: number;
   enabled: boolean;
   selectedByDefault: boolean;
 }
@@ -48,6 +51,7 @@ export interface RetrievalFailure {
   vaultId: string;
   vaultDisplayName: string;
   stage: "search" | "read";
+  kind: "timeout" | "error";
   message: string;
 }
 

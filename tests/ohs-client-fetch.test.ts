@@ -44,6 +44,18 @@ describe("OHS availability retries", () => {
     await expect(withTransientOhsRetries(invalid, undefined, [0])).rejects.toThrow("Invalid search arguments");
     expect(invalid).toHaveBeenCalledTimes(1);
   });
+
+  it("does not retry a transient error after its request signal is canceled", async () => {
+    const controller = new AbortController();
+    const operation = vi.fn().mockImplementation(() => {
+      controller.abort();
+      return Promise.reject(new Error("fetch failed"));
+    });
+
+    await expect(withTransientOhsRetries(operation, controller.signal, [0, 0]))
+      .rejects.toThrow("fetch failed");
+    expect(operation).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("Obsidian MCP HTTP adapter", () => {

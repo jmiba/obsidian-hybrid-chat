@@ -32,8 +32,8 @@ class FakeGateway implements OhsGateway {
 }
 
 const endpoints: OhsEndpointConfig[] = [
-  { id: "healthy", displayName: "Healthy", endpoint: "http://healthy/mcp", obsidianVaultName: "A", enabled: true, selectedByDefault: true },
-  { id: "offline", displayName: "Offline", endpoint: "http://offline/mcp", obsidianVaultName: "B", enabled: true, selectedByDefault: true },
+  { id: "healthy", displayName: "Healthy", endpoint: "http://healthy/mcp", obsidianVaultName: "A", requestTimeoutMs: 60_000, enabled: true, selectedByDefault: true },
+  { id: "offline", displayName: "Offline", endpoint: "http://offline/mcp", obsidianVaultName: "B", requestTimeoutMs: 60_000, enabled: true, selectedByDefault: true },
 ];
 
 describe("endpoint partial failure", () => {
@@ -64,5 +64,60 @@ describe("endpoint partial failure", () => {
     );
     expect(result.sources).toEqual([]);
     expect(result.allSearchesFailed).toBe(true);
+  });
+
+  it("bounds each endpoint and reports that a timed-out server may still be processing", async () => {
+    class HangingGateway extends FakeGateway {
+      override search(
+        endpoint: string,
+        query: string,
+        limit: number,
+        rerank: boolean,
+        frontmatter: string[],
+        signal?: AbortSignal,
+      ): Promise<SearchResult[]> {
+        void endpoint;
+        void query;
+        void limit;
+        void rerank;
+        void frontmatter;
+        return new Promise((_, reject) => {
+          signal?.addEventListener("abort", () => reject(new DOMException("Request canceled", "AbortError")), { once: true });
+        });
+      }
+    }
+
+    const result = await new FederatedRetriever(new HangingGateway()).retrieve(
+      "question",
+      [{ ...endpoints[0]!, requestTimeoutMs: 5 }],
+      { mode: "all", vaultIds: [] },
+      "A",
+      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, frontmatterFilters: [] },
+    );
+    expect(result.allSearchesFailed).toBe(true);
+    expect(result.failures[0]).toMatchObject({
+      stage: "search",
+      kind: "timeout",
+    });
+    expect(result.failures[0]?.message).toContain("may still be processing");
+  });
+
+  it("propagates user cancellation instead of recording endpoint failures", async () => {
+    const controller = new AbortController();
+    class CanceledGateway extends FakeGateway {
+      override search(): Promise<SearchResult[]> {
+        controller.abort();
+        return Promise.reject(new DOMException("Request canceled", "AbortError"));
+      }
+    }
+
+    await expect(new FederatedRetriever(new CanceledGateway()).retrieve(
+      "question",
+      [endpoints[0]!],
+      { mode: "all", vaultIds: [] },
+      "A",
+      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, frontmatterFilters: [] },
+      controller.signal,
+    )).rejects.toMatchObject({ name: "AbortError" });
   });
 });

@@ -174,7 +174,9 @@ export class HybridChatView extends ItemView {
       assistantMessage.failures = retrieval.failures;
       assistantMessage.retrievalUnavailable = retrieval.allSearchesFailed;
       if (retrieval.allSearchesFailed) {
-        assistantMessage.content = "I could not query the selected vault because every OHS endpoint is currently unavailable. Please retry after the search service has finished starting.";
+        assistantMessage.content = retrieval.failures.some((failure) => failure.kind === "timeout")
+          ? "I could not complete retrieval within the configured OHS timeout. Hybrid Chat stopped waiting, but OHS may still be processing one or more requests."
+          : "I could not query the selected vault because every selected OHS endpoint failed.";
         await this.plugin.saveSettings();
         return;
       }

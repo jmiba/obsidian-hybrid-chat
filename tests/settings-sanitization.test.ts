@@ -7,7 +7,7 @@ vi.mock("obsidian", () => ({
   Setting: class {},
 }));
 
-import { defaultSettings, sanitizeSettingsForPersistence } from "../src/settings";
+import { defaultSettings, loadSettings, sanitizeSettingsForPersistence } from "../src/settings";
 
 describe("settings sanitization", () => {
   it("persists secret identifiers but drops unexpected plaintext credential fields", () => {
@@ -31,6 +31,21 @@ describe("settings sanitization", () => {
     expect(persisted.includeCurrentDateTime).toBe(true);
     expect(persisted.customSystemPrompt).toBe("Answer in German.");
     expect(persisted.enableOhsReranking).toBe(true);
+    expect(persisted.ohsEndpoints[0]?.requestTimeoutMs).toBe(60_000);
+  });
+
+  it("migrates endpoints without a timeout to the bounded default", () => {
+    const loaded = loadSettings({
+      ohsEndpoints: [{
+        id: "vault",
+        displayName: "Vault",
+        endpoint: "http://127.0.0.1:3939/mcp",
+        obsidianVaultName: "Vault",
+        enabled: true,
+        selectedByDefault: true,
+      }],
+    }, "Vault");
+    expect(loaded.ohsEndpoints[0]?.requestTimeoutMs).toBe(60_000);
   });
 
   it("creates a persistence snapshot without detaching live streaming references", () => {

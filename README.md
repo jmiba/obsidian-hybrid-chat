@@ -34,6 +34,7 @@ The source is split into the OHS client, federated retriever, rank fusion, conte
 In Obsidian settings:
 
 - Register one OHS Streamable HTTP MCP endpoint per vault, including a stable ID, display name, exact Obsidian vault name, and enabled/default-selection state.
+- Set a per-endpoint request timeout. The default is 60 seconds for each OHS `search` or `read`; a client timeout stops Hybrid Chat from waiting but cannot cancel synchronous database work already running inside OHS.
 - Configure one or more OpenAI-compatible profiles, choose an active profile, enter its model, and select or create an API-key secret.
 - Optionally customize language, tone, role, or answer structure. Grounding/citation rules remain enforced separately.
 - Keep the local current-date/time injection enabled when relative dates such as “today” or “last week” matter.
@@ -42,6 +43,8 @@ In Obsidian settings:
 - Adjust per-vault search, global note-read, and context limits.
 
 The current public OHS contract exposes `search` and batch `read` over stateless Streamable HTTP. Tool prefixes configured by OHS are discovered automatically.
+
+Streamable HTTP remains the default because multiple clients can share one long-lived OHS indexer and model cache. STDIO is not currently exposed as a Hybrid Chat transport; a future local-only mode would need to own a persistent child process and make its indexing, memory, logging, and cancellation lifecycle explicit.
 
 ## Development
 

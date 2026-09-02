@@ -6,6 +6,7 @@ const endpoint = (id: string) => ({
   displayName: id.toUpperCase(),
   endpoint: `http://127.0.0.1/${id}/mcp`,
   obsidianVaultName: id,
+  requestTimeoutMs: 60_000,
   enabled: true,
   selectedByDefault: true,
 });
