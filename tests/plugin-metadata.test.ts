@@ -9,4 +9,20 @@ describe("plugin metadata", () => {
       name: "Hybrid Chat",
     });
   });
+
+  it("keeps package, manifest, and Obsidian compatibility versions aligned", () => {
+    const manifest = parseRecord(new URL("../manifest.json", import.meta.url));
+    const packageJson = parseRecord(new URL("../package.json", import.meta.url));
+    const versions = parseRecord(new URL("../versions.json", import.meta.url));
+    expect(packageJson.version).toBe(manifest.version);
+    expect(versions[String(manifest.version)]).toBe(manifest.minAppVersion);
+  });
 });
+
+function parseRecord(url: URL): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(readFileSync(url, "utf8"));
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`${url.pathname} must contain a JSON object`);
+  }
+  return parsed as Record<string, unknown>;
+}

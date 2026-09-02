@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { requestUrl } = vi.hoisted(() => ({ requestUrl: vi.fn() }));
-vi.mock("obsidian", () => ({ requestUrl }));
+vi.mock("obsidian", () => ({
+  requestUrl,
+}));
+vi.stubGlobal("window", { clearTimeout, setTimeout });
 
 import {
   buildOhsSearchArguments,

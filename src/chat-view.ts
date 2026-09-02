@@ -416,7 +416,8 @@ class ConfirmMessageDeleteModal extends Modal {
     new ButtonComponent(actions).setButtonText("Cancel").onClick(() => this.close());
     new ButtonComponent(actions)
       .setButtonText("Delete")
-      .setWarning()
+      .setDestructive()
+      .setCta()
       .onClick(() => {
         this.close();
         void this.onConfirm();

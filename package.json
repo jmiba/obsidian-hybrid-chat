@@ -8,11 +8,13 @@
   "scripts": {
     "build": "node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs",
-    "lint": "eslint src tests vitest.config.ts esbuild.config.mjs",
+    "lint": "eslint . --max-warnings 0",
     "lint:fix": "npm run lint -- --fix",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build"
+    "verify:bundle": "node --check main.js",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify:bundle",
+    "package-release": "npm run check && node scripts/package-release.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0"
@@ -22,6 +24,7 @@
     "@types/node": "^22.15.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.9.1",
+    "eslint-plugin-obsidianmd": "^0.4.2",
     "globals": "^17.12.0",
     "obsidian": "^1.13.1",
     "typescript": "^5.9.2",

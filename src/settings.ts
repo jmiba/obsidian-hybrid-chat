@@ -1,4 +1,12 @@
-import { Notice, PluginSettingTab, SecretComponent, Setting, type App } from "obsidian";
+import {
+  Notice,
+  PluginSettingTab,
+  SecretComponent,
+  type App,
+  type Setting,
+  type SettingDefinition,
+  type SettingDefinitionItem,
+} from "obsidian";
 import type HybridChatPlugin from "./main";
 import { DEFAULT_OHS_REQUEST_TIMEOUT_MS } from "./domain";
 import type {
@@ -125,171 +133,244 @@ export class HybridChatSettingTab extends PluginSettingTab {
     super(app, plugin);
   }
 
-  display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
-    containerEl.createEl("h2", { text: "Hybrid Chat" });
-    containerEl.createEl("p", {
-      text: "Retrieval uses only the configured OHS MCP endpoints. API keys are selected from Obsidian SecretStorage and are never written to plugin data.",
-    });
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    return [
+      this.definition(
+        "Retrieval and privacy",
+        "Retrieval uses only the configured OHS MCP endpoints. API keys are selected from Obsidian SecretStorage and are never written to plugin data.",
+        () => undefined,
+      ),
+      {
+        type: "group",
+        heading: "Chat provider",
+        items: [this.activeProviderDefinition(), this.addProviderDefinition()],
+      },
+      ...this.plugin.settings.providers.map((provider) => ({
+        type: "group" as const,
+        heading: `Provider: ${provider.displayName || provider.id}`,
+        items: this.providerDefinitions(provider),
+      })),
+      {
+        type: "group",
+        heading: "OHS vault registry",
+        items: [this.addEndpointDefinition()],
+      },
+      ...this.plugin.settings.ohsEndpoints.map((endpoint) => ({
+        type: "group" as const,
+        heading: `Vault: ${endpoint.displayName || endpoint.id}`,
+        items: this.endpointDefinitions(endpoint),
+      })),
+      {
+        type: "group",
+        heading: "Prompt and context",
+        items: this.promptDefinitions(),
+      },
+      {
+        type: "group",
+        heading: "Retrieval limits",
+        items: this.retrievalDefinitions(),
+      },
+    ];
+  }
 
-    containerEl.createEl("h3", { text: "Chat provider" });
-    new Setting(containerEl)
-      .setName("Active profile")
-      .addDropdown((dropdown) => {
+  private activeProviderDefinition(): SettingDefinition {
+    return this.definition("Active profile", undefined, (setting) => {
+      setting.addDropdown((dropdown) => {
         for (const profile of this.plugin.settings.providers.filter((item) => item.enabled)) {
           dropdown.addOption(profile.id, profile.displayName);
         }
-        dropdown.setValue(this.plugin.settings.activeProviderId).onChange(async (value) => {
+        dropdown.setValue(this.plugin.settings.activeProviderId).onChange((value) => {
           this.plugin.settings.activeProviderId = value;
-          await this.plugin.saveSettings();
+          this.persist();
         });
       });
-    for (const provider of this.plugin.settings.providers) this.renderProvider(containerEl, provider);
-    new Setting(containerEl).addButton((button) => button.setButtonText("Add provider profile").onClick(async () => {
-      const id = uniqueId("provider");
-      this.plugin.settings.providers.push({
-        id,
-        displayName: "New provider",
-        baseUrl: "http://127.0.0.1:1234/v1",
-        model: "",
-        apiKeySecretId: "",
-        enabled: true,
-      });
-      await this.plugin.saveSettings();
-      this.display();
-    }));
-
-    containerEl.createEl("h3", { text: "OHS vault registry" });
-    for (const endpoint of this.plugin.settings.ohsEndpoints) this.renderEndpoint(containerEl, endpoint);
-    new Setting(containerEl).addButton((button) => button.setButtonText("Add OHS endpoint").onClick(async () => {
-      const id = uniqueId("vault");
-      this.plugin.settings.ohsEndpoints.push({
-        id,
-        displayName: "New vault",
-        endpoint: "http://127.0.0.1:3939/mcp",
-        obsidianVaultName: "",
-        requestTimeoutMs: DEFAULT_OHS_REQUEST_TIMEOUT_MS,
-        enabled: true,
-        selectedByDefault: false,
-      });
-      await this.plugin.saveSettings();
-      this.display();
-    }));
-
-    containerEl.createEl("h3", { text: "Prompt and context" });
-    new Setting(containerEl)
-      .setName("Include current date and time")
-      .setDesc("Inject local date/time, IANA time zone, and UTC on every request. This is computed locally and does not call another MCP server.")
-      .addToggle((toggle) => toggle.setValue(this.plugin.settings.includeCurrentDateTime).onChange(async (value) => {
-        this.plugin.settings.includeCurrentDateTime = value;
-        await this.plugin.saveSettings();
-      }));
-    new Setting(containerEl)
-      .setName("Custom system instructions")
-      .setDesc("Optional instructions for language, tone, structure, or role. Protected grounding and citation rules are always appended.")
-      .addTextArea((text) => text
-        .setPlaceholder("For example: Answer in German and start with a concise summary.")
-        .setValue(this.plugin.settings.customSystemPrompt)
-        .onChange(async (value) => {
-          this.plugin.settings.customSystemPrompt = value;
-          await this.plugin.saveSettings();
-        }));
-
-    containerEl.createEl("h3", { text: "Retrieval limits" });
-    new Setting(containerEl)
-      .setName("Enable OHS cross-encoder reranking")
-      .setDesc("Rerank each vault's hybrid candidates inside OHS before cross-vault fusion. The OHS service controls and caches its reranker model; this plugin sends only rerank: true.")
-      .addToggle((toggle) => toggle.setValue(this.plugin.settings.enableOhsReranking).onChange(async (value) => {
-        this.plugin.settings.enableOhsReranking = value;
-        await this.plugin.saveSettings();
-      }));
-    this.addNumberSetting(containerEl, "Results per vault", "Candidates requested from each healthy OHS endpoint.", "searchLimitPerVault", 1, 50);
-    this.addNumberSetting(containerEl, "Notes read", "Global post-fusion notes fetched with OHS read.", "maxNotes", 1, 20);
-    this.addNumberSetting(containerEl, "Total context characters", "Maximum source text sent to the chat provider.", "maxContextChars", 1000, 200000);
-    this.addNumberSetting(containerEl, "Characters per note", "Maximum context from any single source.", "maxCharsPerNote", 500, 50000);
+    });
   }
 
-  private renderProvider(container: HTMLElement, provider: ChatProviderProfile): void {
-    container.createEl("h4", { text: provider.displayName || provider.id });
-    new Setting(container).setName("Display name").addText((text) => text.setValue(provider.displayName).onChange(async (value) => {
-      provider.displayName = value.trim(); await this.plugin.saveSettings();
-    }));
-    new Setting(container).setName("Base URL").setDesc("HTTPS for remote providers; loopback HTTP is allowed.").addText((text) => text.setValue(provider.baseUrl).onChange(async (value) => {
-      provider.baseUrl = value.trim(); await this.plugin.saveSettings();
-    }));
-    new Setting(container).setName("Model").addText((text) => text.setValue(provider.model).onChange(async (value) => {
-      provider.model = value.trim(); await this.plugin.saveSettings();
-    }));
-    new Setting(container).setName("API key").setDesc("Select or create an Obsidian secret. Only its identifier is persisted.")
-      .addComponent((componentContainer) => new SecretComponent(this.app, componentContainer)
-        .setValue(provider.apiKeySecretId)
-        .onChange(async (value) => { provider.apiKeySecretId = value; await this.plugin.saveSettings(); }));
-    new Setting(container).setName("Enabled").addToggle((toggle) => toggle.setValue(provider.enabled).onChange(async (value) => {
-      provider.enabled = value; await this.plugin.saveSettings();
-    })).addExtraButton((button) => button.setIcon("trash").setTooltip("Remove provider").onClick(async () => {
-      if (this.plugin.settings.providers.length <= 1) {
-        new Notice("At least one provider profile is required."); return;
-      }
-      this.plugin.settings.providers = this.plugin.settings.providers.filter((item) => item.id !== provider.id);
-      if (this.plugin.settings.activeProviderId === provider.id) {
-        this.plugin.settings.activeProviderId = this.plugin.settings.providers[0]?.id ?? "";
-      }
-      await this.plugin.saveSettings(); this.display();
-    }));
+  private addProviderDefinition(): SettingDefinition {
+    return this.definition("Add provider profile", undefined, (setting) => {
+      setting.addButton((button) => button.setButtonText("Add provider profile").onClick(() => {
+        const id = uniqueId("provider");
+        this.plugin.settings.providers.push({
+          id,
+          displayName: "New provider",
+          baseUrl: "http://127.0.0.1:1234/v1",
+          model: "",
+          apiKeySecretId: "",
+          enabled: true,
+        });
+        this.persist();
+        this.update();
+      }));
+    });
   }
 
-  private renderEndpoint(container: HTMLElement, endpoint: OhsEndpointConfig): void {
-    container.createEl("h4", { text: endpoint.displayName || endpoint.id });
-    new Setting(container).setName("Stable vault ID").setDesc("Used to namespace every source; avoid changing after use.")
-      .addText((text) => text.setValue(endpoint.id).onChange(async (value) => {
-        endpoint.id = stableId(value); await this.plugin.saveSettings();
-      }));
-    new Setting(container).setName("Display name").addText((text) => text.setValue(endpoint.displayName).onChange(async (value) => {
-      endpoint.displayName = value.trim(); await this.plugin.saveSettings();
-    }));
-    new Setting(container).setName("MCP endpoint").addText((text) => text.setValue(endpoint.endpoint).onChange(async (value) => {
-      endpoint.endpoint = value.trim(); await this.plugin.saveSettings();
-    }));
-    new Setting(container).setName("Obsidian vault name").setDesc("Exact vault name used for current-vault matching and obsidian:// links.")
-      .addText((text) => text.setValue(endpoint.obsidianVaultName).onChange(async (value) => {
-        endpoint.obsidianVaultName = value.trim(); await this.plugin.saveSettings();
-      }));
-    new Setting(container)
-      .setName("Request timeout (seconds)")
-      .setDesc("Maximum time Hybrid Chat waits for each OHS search or read. Timing out does not cancel database work already running inside OHS.")
-      .addText((text) => text
-        .setValue(String(Math.round(endpoint.requestTimeoutMs / 1000)))
-        .onChange(async (value) => {
-          const currentSeconds = Math.round(endpoint.requestTimeoutMs / 1000);
-          endpoint.requestTimeoutMs = boundedInteger(Number(value), 5, 600, currentSeconds) * 1000;
-          await this.plugin.saveSettings();
-        }));
-    new Setting(container).setName("Enabled").addToggle((toggle) => toggle.setValue(endpoint.enabled).onChange(async (value) => {
-      endpoint.enabled = value; await this.plugin.saveSettings();
-    }));
-    new Setting(container).setName("Selected by default").addToggle((toggle) => toggle.setValue(endpoint.selectedByDefault).onChange(async (value) => {
-      endpoint.selectedByDefault = value; await this.plugin.saveSettings();
-    })).addExtraButton((button) => button.setIcon("trash").setTooltip("Remove endpoint").onClick(async () => {
-      this.plugin.settings.ohsEndpoints = this.plugin.settings.ohsEndpoints.filter((item) => item !== endpoint);
-      await this.plugin.saveSettings(); this.display();
-    }));
+  private providerDefinitions(provider: ChatProviderProfile): SettingDefinition[] {
+    return [
+      this.definition("Display name", undefined, (setting) => setting.addText((text) => text
+        .setValue(provider.displayName)
+        .onChange((value) => { provider.displayName = value.trim(); this.persist(); }))),
+      this.definition("Base URL", "HTTPS for remote providers; loopback HTTP is allowed.", (setting) => setting.addText((text) => text
+        .setValue(provider.baseUrl)
+        .onChange((value) => { provider.baseUrl = value.trim(); this.persist(); }))),
+      this.definition("Model", undefined, (setting) => setting.addText((text) => text
+        .setValue(provider.model)
+        .onChange((value) => { provider.model = value.trim(); this.persist(); }))),
+      this.definition("API key", "Select or create an Obsidian secret. Only its identifier is persisted.", (setting) => setting
+        .addComponent((componentContainer) => new SecretComponent(this.app, componentContainer)
+          .setValue(provider.apiKeySecretId)
+          .onChange((value) => { provider.apiKeySecretId = value; this.persist(); }))),
+      this.definition("Enabled", undefined, (setting) => setting.addToggle((toggle) => toggle
+        .setValue(provider.enabled)
+        .onChange((value) => { provider.enabled = value; this.persist(); }))),
+      this.definition("Remove provider", undefined, (setting) => setting.addExtraButton((button) => button
+        .setIcon("trash")
+        .setTooltip("Remove provider")
+        .onClick(() => {
+          if (this.plugin.settings.providers.length <= 1) {
+            new Notice("At least one provider profile is required.");
+            return;
+          }
+          this.plugin.settings.providers = this.plugin.settings.providers.filter((item) => item.id !== provider.id);
+          if (this.plugin.settings.activeProviderId === provider.id) {
+            this.plugin.settings.activeProviderId = this.plugin.settings.providers[0]?.id ?? "";
+          }
+          this.persist();
+          this.update();
+        }))),
+    ];
   }
 
-  private addNumberSetting(
-    container: HTMLElement,
+  private addEndpointDefinition(): SettingDefinition {
+    return this.definition("Add OHS endpoint", undefined, (setting) => {
+      setting.addButton((button) => button.setButtonText("Add OHS endpoint").onClick(() => {
+        const id = uniqueId("vault");
+        this.plugin.settings.ohsEndpoints.push({
+          id,
+          displayName: "New vault",
+          endpoint: "http://127.0.0.1:3939/mcp",
+          obsidianVaultName: "",
+          requestTimeoutMs: DEFAULT_OHS_REQUEST_TIMEOUT_MS,
+          enabled: true,
+          selectedByDefault: false,
+        });
+        this.persist();
+        this.update();
+      }));
+    });
+  }
+
+  private endpointDefinitions(endpoint: OhsEndpointConfig): SettingDefinition[] {
+    return [
+      this.definition("Stable vault ID", "Used to namespace every source; avoid changing after use.", (setting) => setting.addText((text) => text
+        .setValue(endpoint.id)
+        .onChange((value) => { endpoint.id = stableId(value); this.persist(); }))),
+      this.definition("Display name", undefined, (setting) => setting.addText((text) => text
+        .setValue(endpoint.displayName)
+        .onChange((value) => { endpoint.displayName = value.trim(); this.persist(); }))),
+      this.definition("MCP endpoint", undefined, (setting) => setting.addText((text) => text
+        .setValue(endpoint.endpoint)
+        .onChange((value) => { endpoint.endpoint = value.trim(); this.persist(); }))),
+      this.definition("Obsidian vault name", "Exact vault name used for current-vault matching and Obsidian:// links.", (setting) => setting.addText((text) => text
+        .setValue(endpoint.obsidianVaultName)
+        .onChange((value) => { endpoint.obsidianVaultName = value.trim(); this.persist(); }))),
+      this.definition(
+        "Request timeout (seconds)",
+        "Maximum time Hybrid Chat waits for each OHS search or read. Timing out does not cancel database work already running inside OHS.",
+        (setting) => setting.addText((text) => text
+          .setValue(String(Math.round(endpoint.requestTimeoutMs / 1000)))
+          .onChange((value) => {
+            const currentSeconds = Math.round(endpoint.requestTimeoutMs / 1000);
+            endpoint.requestTimeoutMs = boundedInteger(Number(value), 5, 600, currentSeconds) * 1000;
+            this.persist();
+          })),
+      ),
+      this.definition("Enabled", undefined, (setting) => setting.addToggle((toggle) => toggle
+        .setValue(endpoint.enabled)
+        .onChange((value) => { endpoint.enabled = value; this.persist(); }))),
+      this.definition("Selected by default", undefined, (setting) => setting.addToggle((toggle) => toggle
+        .setValue(endpoint.selectedByDefault)
+        .onChange((value) => { endpoint.selectedByDefault = value; this.persist(); }))),
+      this.definition("Remove endpoint", undefined, (setting) => setting.addExtraButton((button) => button
+        .setIcon("trash")
+        .setTooltip("Remove endpoint")
+        .onClick(() => {
+          this.plugin.settings.ohsEndpoints = this.plugin.settings.ohsEndpoints.filter((item) => item !== endpoint);
+          this.persist();
+          this.update();
+        }))),
+    ];
+  }
+
+  private promptDefinitions(): SettingDefinition[] {
+    return [
+      this.definition(
+        "Include current date and time",
+        "Inject local date/time, IANA time zone, and UTC on every request. This is computed locally and does not call another MCP server.",
+        (setting) => setting.addToggle((toggle) => toggle
+          .setValue(this.plugin.settings.includeCurrentDateTime)
+          .onChange((value) => { this.plugin.settings.includeCurrentDateTime = value; this.persist(); })),
+      ),
+      this.definition(
+        "Custom system instructions",
+        "Optional instructions for language, tone, structure, or role. Protected grounding and citation rules are always appended.",
+        (setting) => setting.addTextArea((text) => text
+          .setPlaceholder("For example: Answer in German and start with a concise summary.")
+          .setValue(this.plugin.settings.customSystemPrompt)
+          .onChange((value) => { this.plugin.settings.customSystemPrompt = value; this.persist(); })),
+      ),
+    ];
+  }
+
+  private retrievalDefinitions(): SettingDefinition[] {
+    return [
+      this.definition(
+        "Enable OHS cross-encoder reranking",
+        "Rerank each vault's hybrid candidates inside OHS before cross-vault fusion. The OHS service controls and caches its reranker model; this plugin sends only rerank: true.",
+        (setting) => setting.addToggle((toggle) => toggle
+          .setValue(this.plugin.settings.enableOhsReranking)
+          .onChange((value) => { this.plugin.settings.enableOhsReranking = value; this.persist(); })),
+      ),
+      this.numberDefinition("Results per vault", "Candidates requested from each healthy OHS endpoint.", "searchLimitPerVault", 1, 50),
+      this.numberDefinition("Notes read", "Global post-fusion notes fetched with OHS read.", "maxNotes", 1, 20),
+      this.numberDefinition("Total context characters", "Maximum source text sent to the chat provider.", "maxContextChars", 1000, 200000),
+      this.numberDefinition("Characters per note", "Maximum context from any single source.", "maxCharsPerNote", 500, 50000),
+    ];
+  }
+
+  private numberDefinition(
     name: string,
     description: string,
     key: "searchLimitPerVault" | "maxNotes" | "maxContextChars" | "maxCharsPerNote",
     min: number,
     max: number,
-  ): void {
-    new Setting(container).setName(name).setDesc(description).addText((text) => text
+  ): SettingDefinition {
+    return this.definition(name, description, (setting) => setting.addText((text) => text
       .setValue(String(this.plugin.settings[key]))
-      .onChange(async (value) => {
+      .onChange((value) => {
         this.plugin.settings[key] = boundedInteger(Number(value), min, max, this.plugin.settings[key]);
-        await this.plugin.saveSettings();
-      }));
+        this.persist();
+      })));
+  }
+
+  private persist(): void {
+    void this.plugin.saveSettings();
+  }
+
+  private definition(
+    name: string,
+    description: string | undefined,
+    configure: (setting: Setting) => unknown,
+  ): SettingDefinition {
+    return {
+      name,
+      desc: description,
+      render: (setting) => {
+        setting.setName(name);
+        if (description) setting.setDesc(description);
+        configure(setting);
+      },
+    };
   }
 }
 

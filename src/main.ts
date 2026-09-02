@@ -23,10 +23,6 @@ export default class HybridChatPlugin extends Plugin {
     this.addSettingTab(new HybridChatSettingTab(this.app, this));
   }
 
-  onunload(): void {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_HYBRID_CHAT);
-  }
-
   async saveSettings(): Promise<void> {
     // Persist a sanitized snapshot without replacing the live object graph.
     // The chat view intentionally keeps references to the active session and

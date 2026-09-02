@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.stubGlobal("window", { clearTimeout, setTimeout });
 import { FederatedRetriever } from "../src/federated-retriever";
 import type { OhsGateway, OhsReadResult } from "../src/ohs-client";
 import type { OhsEndpointConfig, SearchResult } from "../src/domain";

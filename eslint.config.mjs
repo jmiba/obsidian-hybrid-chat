@@ -1,30 +1,53 @@
-import js from "@eslint/js";
+import { defineConfig, globalIgnores } from "eslint/config";
+import obsidianmd from "eslint-plugin-obsidianmd";
 import globals from "globals";
-import tseslint from "typescript-eslint";
 
-export default tseslint.config(
+export default defineConfig(
+  globalIgnores([
+    "node_modules/**",
+    "dist/**",
+    "main.js",
+    "main.js.map",
+    "coverage/**",
+    "work/**",
+    "outputs/**",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.json",
+    "versions.json",
+  ]),
+  ...obsidianmd.configs.recommended,
   {
-    ignores: ["main.js", "node_modules/**", "coverage/**", "work/**", "outputs/**"],
-  },
-  js.configs.recommended,
-  {
-    files: ["**/*.ts"],
-    extends: [...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
-      globals: globals.browser,
+      globals: {
+        ...globals.browser,
+      },
       parserOptions: {
-        projectService: true,
+        projectService: {
+          allowDefaultProject: ["eslint.config.mjs", "esbuild.config.mjs", "scripts/*.mjs"],
+        },
         tsconfigRootDir: import.meta.dirname,
+        extraFileExtensions: [".json"],
       },
     },
+  },
+  {
+    files: ["**/*.ts"],
     rules: {
       "@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports" }],
+      "obsidianmd/ui/sentence-case": ["warn", {
+        acronyms: ["API", "HTTP", "HTTPS", "IANA", "MCP", "OHS", "RAG", "STDIO", "UTC", "URL", "YAML"],
+        brands: ["German", "Hybrid Chat", "Markdown", "Obsidian", "OpenAI", "SecretStorage"],
+      }],
     },
   },
   {
     files: ["**/*.mjs"],
     languageOptions: {
       globals: globals.node,
+    },
+    rules: {
+      "obsidianmd/no-nodejs-modules": "off",
     },
   },
 );

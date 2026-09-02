@@ -274,12 +274,12 @@ function raceAbort<T>(pending: Promise<T>, signal: AbortSignal | null | undefine
 function waitForRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) return Promise.reject(abortError());
   return new Promise<void>((resolve, reject) => {
-    const timeout = globalThis.setTimeout(() => {
+    const timeout = window.setTimeout(() => {
       signal?.removeEventListener("abort", abort);
       resolve();
     }, delayMs);
     const abort = () => {
-      globalThis.clearTimeout(timeout);
+      window.clearTimeout(timeout);
       reject(abortError());
     };
     signal?.addEventListener("abort", abort, { once: true });

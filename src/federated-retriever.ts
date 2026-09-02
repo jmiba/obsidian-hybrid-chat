@@ -150,7 +150,7 @@ function withEndpointTimeout<T>(
     const finish = (callback: () => void): void => {
       if (settled) return;
       settled = true;
-      globalThis.clearTimeout(timeout);
+      window.clearTimeout(timeout);
       outerSignal?.removeEventListener("abort", cancel);
       callback();
     };
@@ -158,7 +158,7 @@ function withEndpointTimeout<T>(
       controller.abort();
       finish(() => reject(abortError()));
     };
-    const timeout = globalThis.setTimeout(() => {
+    const timeout = window.setTimeout(() => {
       controller.abort();
       finish(() => reject(new OhsRequestTimeoutError(stage, endpoint.requestTimeoutMs)));
     }, endpoint.requestTimeoutMs);
