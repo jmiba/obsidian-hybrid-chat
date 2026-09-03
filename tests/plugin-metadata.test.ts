@@ -2,12 +2,15 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("plugin metadata", () => {
-  it("uses a user-visible name without the platform name while preserving the stable ID", () => {
-    const parsed: unknown = JSON.parse(readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
-    expect(parsed).toMatchObject({
-      id: "obsidian-hybrid-chat",
+  it("uses a community-compatible plugin ID and user-visible name", () => {
+    const manifest = parseRecord(new URL("../manifest.json", import.meta.url));
+    expect(manifest).toMatchObject({
+      id: "hybrid-chat",
       name: "Hybrid Chat",
     });
+    expect(manifest.id).toMatch(/^[a-z-]+$/);
+    expect(manifest.id).not.toContain("obsidian");
+    expect(manifest.id).not.toMatch(/plugin$/);
   });
 
   it("keeps package, manifest, and Obsidian compatibility versions aligned", () => {

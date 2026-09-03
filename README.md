@@ -57,7 +57,7 @@ npm run build
 npm run check
 ```
 
-For manual testing, copy `manifest.json`, `main.js`, and `styles.css` into `<vault>/.obsidian/plugins/obsidian-hybrid-chat/`, enable the plugin, configure OHS and a chat profile, then use the ribbon icon or **Hybrid Chat: Open chat** command.
+For manual testing, copy `manifest.json`, `main.js`, and `styles.css` into `<vault>/.obsidian/plugins/hybrid-chat/`, enable the plugin, configure OHS and a chat profile, then use the ribbon icon or **Hybrid Chat: Open chat** command.
 
 ## Releases
 
@@ -68,4 +68,4 @@ For manual testing, copy `manifest.json`, `main.js`, and `styles.css` into `<vau
 - `styles.css`
 - `checksums.sha256`
 
-Pushing a tag that exactly matches `manifest.json` (for example, `0.1.0`) runs the release workflow against the tagged source, generates build-provenance attestations for the three Obsidian assets, and creates a draft GitHub release. Review its generated notes before publishing. Obsidian installs the individual `main.js`, `manifest.json`, and `styles.css` attachments; the checksum file is an additional verification aid.
+Pushing a tag that exactly matches `manifest.json` (for example, `0.1.1`) runs the release workflow against the tagged source, generates build-provenance attestations for the three Obsidian assets, and creates a draft GitHub release. Review its generated notes before publishing. Obsidian installs the individual `main.js`, `manifest.json`, and `styles.css` attachments; the checksum file is an additional verification aid.

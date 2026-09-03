@@ -16,7 +16,7 @@ export default class HybridChatPlugin extends Plugin {
     this.registerView(VIEW_TYPE_HYBRID_CHAT, (leaf) => new HybridChatView(leaf, this));
     this.addRibbonIcon("messages-square", "Open Hybrid Chat", () => void this.activateView());
     this.addCommand({
-      id: "open-hybrid-chat",
+      id: "open-chat",
       name: "Open chat",
       callback: () => void this.activateView(),
     });
