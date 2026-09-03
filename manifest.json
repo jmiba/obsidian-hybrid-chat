@@ -1,7 +1,7 @@
 {
   "id": "hybrid-chat",
   "name": "Hybrid Chat",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "minAppVersion": "1.13.0",
   "description": "Federated, provider-neutral RAG chat over existing hybrid-search MCP services.",
   "author": "Jens Mittelbach",

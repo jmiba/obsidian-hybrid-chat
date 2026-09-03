@@ -68,4 +68,4 @@ For manual testing, copy `manifest.json`, `main.js`, and `styles.css` into `<vau
 - `styles.css`
 - `checksums.sha256`
 
-Pushing a tag that exactly matches `manifest.json` (for example, `0.1.2`) runs the release workflow against the tagged source, generates build-provenance attestations for the three Obsidian assets, and creates a draft GitHub release. Review its generated notes before publishing. Obsidian installs the individual `main.js`, `manifest.json`, and `styles.css` attachments; the checksum file is an additional verification aid.
+Pushing a tag that exactly matches `manifest.json` (for example, `0.1.3`) runs the release workflow against the tagged source, generates build-provenance attestations from `checksums.sha256`, and creates a draft GitHub release containing only the three supported Obsidian assets: `main.js`, `manifest.json`, and `styles.css`. Review its generated notes before publishing.

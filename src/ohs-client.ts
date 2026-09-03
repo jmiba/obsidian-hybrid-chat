@@ -1,7 +1,5 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { requestUrl } from "obsidian";
 import type { SearchResult } from "./domain";
+import { McpHttpClient } from "./mcp-http-client";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -111,25 +109,23 @@ export class OhsMcpClient implements OhsGateway {
     signal?: AbortSignal,
   ): Promise<unknown> {
     const url = validateMcpEndpoint(endpoint);
-    const client = new Client({ name: "obsidian-hybrid-chat", version: "0.1.2" });
-    const transport = new StreamableHTTPClientTransport(url, {
-      requestInit: signal ? { signal } : undefined,
-      // Obsidian's desktop request API is intentionally used here instead of
-      // renderer fetch so loopback OHS servers do not require browser CORS
-      // headers. OHS Streamable HTTP is stateless request/response JSON.
-      fetch: obsidianMcpFetch,
-    });
+    const client = new McpHttpClient(url, { name: "obsidian-hybrid-chat", version: "0.1.3" });
     try {
-      await client.connect(transport);
-      const listed = await client.listTools();
-      const tool = listed.tools.find(({ name }) => name === requestedName)
-        ?? listed.tools.find(({ name }) => name.endsWith(`_${requestedName}`));
+      await client.initialize(signal);
+      const tools = await client.listTools(signal);
+      const tool = tools.find(({ name }) => name === requestedName)
+        ?? tools.find(({ name }) => name.endsWith(`_${requestedName}`));
       if (!tool) throw new Error(`OHS endpoint does not expose ${requestedName}`);
-      const result = await client.callTool({ name: tool.name, arguments: args });
+      const result = await client.callTool(tool.name, args, signal);
       if (result.isError) throw new Error(extractText(result.content) || `${requestedName} failed`);
+      if (result.structuredContent) return result.structuredContent;
       const text = extractText(result.content);
       if (!text) throw new Error(`${requestedName} returned no text payload`);
-      return JSON.parse(text) as unknown;
+      try {
+        return JSON.parse(text) as unknown;
+      } catch {
+        throw new Error(`${requestedName} returned invalid JSON text`);
+      }
     } finally {
       await client.close().catch(() => undefined);
     }
@@ -171,24 +167,6 @@ export async function withTransientOhsRetries<T>(
     }
   }
 }
-
-export const obsidianMcpFetch = async (input: string | URL, init?: RequestInit): Promise<Response> => {
-  const signal = init?.signal;
-  if (signal?.aborted) throw abortError();
-  const body = await requestBody(init?.body);
-  const pending = requestUrl({
-    url: String(input),
-    method: init?.method ?? "GET",
-    headers: headersRecord(init?.headers),
-    body,
-    throw: false,
-  });
-  const result = await raceAbort(pending, signal);
-  return new Response(result.arrayBuffer, {
-    status: result.status,
-    headers: result.headers,
-  });
-};
 
 export function validateMcpEndpoint(value: string): URL {
   const url = new URL(value.trim());
@@ -236,39 +214,6 @@ function asNumber(value: unknown): number | null {
 
 function asPositiveInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
-}
-
-function headersRecord(headers: HeadersInit | undefined): Record<string, string> {
-  const result: Record<string, string> = {};
-  new Headers(headers).forEach((value, key) => { result[key] = value; });
-  return result;
-}
-
-async function requestBody(body: BodyInit | null | undefined): Promise<string | ArrayBuffer | undefined> {
-  if (body === null || body === undefined) return undefined;
-  if (typeof body === "string") return body;
-  if (body instanceof URLSearchParams) return body.toString();
-  if (body instanceof ArrayBuffer) return body;
-  if (ArrayBuffer.isView(body)) {
-    return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
-  }
-  if (body instanceof Blob) return body.arrayBuffer();
-  throw new Error("Unsupported MCP request body type");
-}
-
-function raceAbort<T>(pending: Promise<T>, signal: AbortSignal | null | undefined): Promise<T> {
-  if (!signal) return pending;
-  return new Promise<T>((resolve, reject) => {
-    const abort = () => reject(abortError());
-    signal.addEventListener("abort", abort, { once: true });
-    pending.then(
-      (value) => { signal.removeEventListener("abort", abort); resolve(value); },
-      (error: unknown) => {
-        signal.removeEventListener("abort", abort);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      },
-    );
-  });
 }
 
 function waitForRetry(delayMs: number, signal?: AbortSignal): Promise<void> {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const { requestUrl } = vi.hoisted(() => ({ requestUrl: vi.fn() }));
 vi.mock("obsidian", () => ({
@@ -9,7 +9,6 @@ vi.stubGlobal("window", { clearTimeout, setTimeout });
 import {
   buildOhsSearchArguments,
   isTransientOhsError,
-  obsidianMcpFetch,
   withTransientOhsRetries,
 } from "../src/ohs-client";
 
@@ -58,39 +57,5 @@ describe("OHS availability retries", () => {
     await expect(withTransientOhsRetries(operation, controller.signal, [0, 0]))
       .rejects.toThrow("fetch failed");
     expect(operation).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("Obsidian MCP HTTP adapter", () => {
-  beforeEach(() => requestUrl.mockReset());
-
-  it("routes MCP POSTs through requestUrl and reconstructs a web Response", async () => {
-    requestUrl.mockResolvedValue({
-      status: 200,
-      headers: { "content-type": "application/json" },
-      arrayBuffer: new TextEncoder().encode('{"jsonrpc":"2.0","id":1,"result":{}}').buffer,
-    });
-    const response = await obsidianMcpFetch("http://127.0.0.1:3939/mcp", {
-      method: "POST",
-      headers: { accept: "application/json, text/event-stream" },
-      body: '{"jsonrpc":"2.0"}',
-    });
-
-    expect(requestUrl).toHaveBeenCalledWith(expect.objectContaining({
-      url: "http://127.0.0.1:3939/mcp",
-      method: "POST",
-      body: '{"jsonrpc":"2.0"}',
-      throw: false,
-    }));
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ jsonrpc: "2.0", id: 1, result: {} });
-  });
-
-  it("rejects an already canceled request before contacting OHS", async () => {
-    const controller = new AbortController();
-    controller.abort();
-    await expect(obsidianMcpFetch("http://127.0.0.1:3939/mcp", { signal: controller.signal }))
-      .rejects.toMatchObject({ name: "AbortError" });
-    expect(requestUrl).not.toHaveBeenCalled();
   });
 });

@@ -55,4 +55,3 @@ jobs:
           dist/release/main.js
           dist/release/manifest.json
           dist/release/styles.css
-          dist/release/checksums.sha256

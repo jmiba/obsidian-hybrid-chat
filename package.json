@@ -1,6 +1,6 @@
 {
   "name": "obsidian-hybrid-chat",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Privacy-conscious federated RAG chat over existing Obsidian Hybrid Search services",
   "private": true,
   "license": "MIT",
@@ -13,12 +13,9 @@
     "lint:fix": "npm run lint -- --fix",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "verify:bundle": "node --check main.js",
+    "verify:bundle": "node scripts/verify-bundle.mjs",
     "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify:bundle",
     "package-release": "npm run check && node scripts/package-release.mjs"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
