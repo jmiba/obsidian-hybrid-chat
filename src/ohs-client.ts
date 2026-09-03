@@ -111,7 +111,7 @@ export class OhsMcpClient implements OhsGateway {
     signal?: AbortSignal,
   ): Promise<unknown> {
     const url = validateMcpEndpoint(endpoint);
-    const client = new Client({ name: "obsidian-hybrid-chat", version: "0.1.1" });
+    const client = new Client({ name: "obsidian-hybrid-chat", version: "0.1.2" });
     const transport = new StreamableHTTPClientTransport(url, {
       requestInit: signal ? { signal } : undefined,
       // Obsidian's desktop request API is intentionally used here instead of

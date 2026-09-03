@@ -1,8 +1,9 @@
 {
   "name": "obsidian-hybrid-chat",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Privacy-conscious federated RAG chat over existing Obsidian Hybrid Search services",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "main": "main.js",
   "scripts": {

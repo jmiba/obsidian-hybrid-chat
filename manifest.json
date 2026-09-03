@@ -1,9 +1,9 @@
 {
   "id": "hybrid-chat",
   "name": "Hybrid Chat",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "minAppVersion": "1.13.0",
-  "description": "Federated, provider-neutral RAG chat over existing Obsidian Hybrid Search MCP services.",
+  "description": "Federated, provider-neutral RAG chat over existing hybrid-search MCP services.",
   "author": "Jens Mittelbach",
   "authorUrl": "https://www.jensmittelbach.de",
   "isDesktopOnly": true

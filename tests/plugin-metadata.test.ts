@@ -11,6 +11,15 @@ describe("plugin metadata", () => {
     expect(manifest.id).toMatch(/^[a-z-]+$/);
     expect(manifest.id).not.toContain("obsidian");
     expect(manifest.id).not.toMatch(/plugin$/);
+    expect(manifest.description).not.toMatch(/obsidian/i);
+  });
+
+  it("declares the repository MIT license", () => {
+    const packageJson = parseRecord(new URL("../package.json", import.meta.url));
+    const license = readFileSync(new URL("../LICENSE", import.meta.url), "utf8");
+    expect(packageJson.license).toBe("MIT");
+    expect(license).toContain("MIT License");
+    expect(license).toContain("Copyright (c) 2026 Jens Mittelbach");
   });
 
   it("keeps package, manifest, and Obsidian compatibility versions aligned", () => {
