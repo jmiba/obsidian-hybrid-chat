@@ -11,12 +11,12 @@ class FakeGateway implements OhsGateway {
 
   search(
     endpoint: string,
-    queries: string[],
+    query: string,
     limit: number,
     rerank: boolean,
     frontmatter: string[],
   ): Promise<SearchResult[]> {
-    void queries;
+    void query;
     void limit;
     void frontmatter;
     this.rerankFlags.push(rerank);
@@ -49,7 +49,7 @@ describe("endpoint partial failure", () => {
   it("continues with healthy vaults and reads only globally selected notes", async () => {
     const gateway = new FakeGateway();
     const result = await new FederatedRetriever(gateway).retrieve(
-      ["question"],
+      "question",
       endpoints,
       { mode: "all", vaultIds: [] },
       "A",
@@ -65,7 +65,7 @@ describe("endpoint partial failure", () => {
   it("marks retrieval unavailable when every selected OHS search fails", async () => {
     const gateway = new FakeGateway();
     const result = await new FederatedRetriever(gateway).retrieve(
-      ["question"],
+      "question",
       [endpoints[1]!],
       { mode: "all", vaultIds: [] },
       "B",
@@ -79,14 +79,14 @@ describe("endpoint partial failure", () => {
     class HangingGateway extends FakeGateway {
       override search(
         endpoint: string,
-        queries: string[],
+        query: string,
         limit: number,
         rerank: boolean,
         frontmatter: string[],
         signal?: AbortSignal,
       ): Promise<SearchResult[]> {
         void endpoint;
-        void queries;
+        void query;
         void limit;
         void rerank;
         void frontmatter;
@@ -97,7 +97,7 @@ describe("endpoint partial failure", () => {
     }
 
     const result = await new FederatedRetriever(new HangingGateway()).retrieve(
-      ["question"],
+      "question",
       [{ ...endpoints[0]!, requestTimeoutMs: 5 }],
       { mode: "all", vaultIds: [] },
       "A",
@@ -121,7 +121,7 @@ describe("endpoint partial failure", () => {
     }
 
     await expect(new FederatedRetriever(new CanceledGateway()).retrieve(
-      ["question"],
+      "question",
       [endpoints[0]!],
       { mode: "all", vaultIds: [] },
       "A",
@@ -145,7 +145,7 @@ describe("endpoint partial failure", () => {
 
     const gateway = new MissingTopGateway();
     const result = await new FederatedRetriever(gateway).retrieve(
-      ["question", "keyword variant"],
+      "question",
       [endpoints[0]!],
       { mode: "all", vaultIds: [] },
       "A",
@@ -175,7 +175,7 @@ describe("endpoint partial failure", () => {
 
     const gateway = new RelatedGateway();
     const result = await new FederatedRetriever(gateway).retrieve(
-      ["How is One connected to the project?"],
+      "How is One connected to the project?",
       [endpoints[0]!],
       { mode: "all", vaultIds: [] },
       "A",
@@ -225,7 +225,7 @@ describe("endpoint partial failure", () => {
       obsidianVaultName: "B",
     };
     const result = await new FederatedRetriever(gateway).retrieve(
-      ["What links these projects?"],
+      "What links these projects?",
       [endpoints[0]!, secondEndpoint],
       { mode: "all", vaultIds: [] },
       "A",
@@ -254,7 +254,7 @@ describe("endpoint partial failure", () => {
     }
 
     const result = await new FederatedRetriever(new FailedRelatedGateway()).retrieve(
-      ["What is linked to One?"],
+      "What is linked to One?",
       [endpoints[0]!],
       { mode: "all", vaultIds: [] },
       "A",

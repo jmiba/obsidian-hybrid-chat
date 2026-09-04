@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../src/domain";
 import {
-  buildConversationSearchQuery,
   buildRecentChatMessages,
-  buildRetrievalQueries,
   shouldTraverseRelatedNotes,
 } from "../src/conversation-context";
 
@@ -45,90 +43,7 @@ describe("provider conversation history", () => {
   });
 });
 
-describe("conversation-aware retrieval", () => {
-  it("keeps first-turn searches unchanged", () => {
-    expect(buildConversationSearchQuery("Ada publications", [])).toBe("Ada publications");
-  });
-
-  it("adds recent user questions to resolve a follow-up", () => {
-    expect(buildConversationSearchQuery(
-      "What did she publish next?",
-      ["Who is Ada?", "What project did Ada lead?"],
-    )).toBe([
-      "Current question: What did she publish next?",
-      "Earlier questions in this chat (for resolving follow-up references):",
-      "- Who is Ada?",
-      "- What project did Ada lead?",
-    ].join("\n"));
-  });
-
-  it("does not expose assistant answers to retrieval", () => {
-    const query = buildConversationSearchQuery("What happened next?", ["Tell me about Project X"]);
-    expect(query).toContain("Tell me about Project X");
-    expect(query).not.toContain("assistant");
-  });
-
-  it("uses only the bounded number of most recent questions", () => {
-    const query = buildConversationSearchQuery("Follow up", ["one", "two", "three"], {
-      maxPreviousQuestions: 2,
-      maxPreviousCharacters: 100,
-    });
-    expect(query).not.toContain("- one");
-    expect(query).toContain("- two");
-    expect(query).toContain("- three");
-  });
-
-  it("keeps self-contained questions unchanged by default", () => {
-    expect(buildRetrievalQueries(
-      "What were the conclusions of the Ada study in 2024?",
-      ["Tell me about an unrelated project"],
-    )).toEqual(["What were the conclusions of the Ada study in 2024?"]);
-  });
-
-  it("adds earlier questions only when the current question is referential", () => {
-    const variants = buildRetrievalQueries(
-      "What did she publish next?",
-      ["Who is Ada?", "What project did Ada lead?"],
-    );
-    expect(variants).toHaveLength(2);
-    expect(variants[0]).toBe("What did she publish next?");
-    expect(variants[1]).toContain("Earlier questions in this chat");
-
-    expect(buildRetrievalQueries("Ada publications", ["Tell me about Project X"]))
-      .toEqual(["Ada publications"]);
-  });
-
-  it("can opt in to lexical variants for every question", () => {
-    expect(buildRetrievalQueries(
-      "What were the conclusions of the Ada study in 2024?",
-      ["Tell me about an unrelated project"],
-      { expansionMode: "always" },
-    )).toEqual([
-      "What were the conclusions of the Ada study in 2024?",
-      "conclusions Ada study 2024",
-    ]);
-
-    const followUpVariants = buildRetrievalQueries(
-      "What did she publish next?",
-      ["Who is Ada?", "What project did Ada lead?"],
-      { expansionMode: "always" },
-    );
-    expect(followUpVariants).toHaveLength(3);
-    expect(followUpVariants[2]).toContain("Ada");
-  });
-
-  it("can turn off expansion even for referential follow-ups", () => {
-    expect(buildRetrievalQueries(
-      "What did she publish next?",
-      ["Who is Ada?"],
-      { expansionMode: "off" },
-    )).toEqual(["What did she publish next?"]);
-  });
-
-  it("preserves an empty query for filter-only retrieval", () => {
-    expect(buildRetrievalQueries("", ["Earlier question"])).toEqual([""]);
-  });
-
+describe("related-note intent", () => {
   it("limits related-note traversal to explicit relationship intent", () => {
     expect(shouldTraverseRelatedNotes("How does Project A relate to Project B?")).toBe(true);
     expect(shouldTraverseRelatedNotes("Welche Notizen stehen damit im Zusammenhang?")).toBe(true);

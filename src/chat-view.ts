@@ -23,7 +23,6 @@ import {
 import { messageClipboardText, removeMessageById } from "./chat-message-actions";
 import {
   buildRecentChatMessages,
-  buildRetrievalQueries,
   shouldTraverseRelatedNotes,
 } from "./conversation-context";
 
@@ -181,16 +180,8 @@ export class HybridChatView extends ItemView {
     let assistantContent = this.messagesEl.querySelector(`[data-message-id="${assistantMessage.id}"] .ohc-message-content`);
     try {
       const propertyDirectives = parsePropertyDirectives(question);
-      const previousQuestions = session.messages
-        .filter((message) => message.role === "user" && message.id !== userMessage.id)
-        .map((message) => parseSearchText(message.content));
-      const retrievalQueries = buildRetrievalQueries(
-        propertyDirectives.searchQuery,
-        previousQuestions,
-        { expansionMode: this.plugin.settings.queryExpansionMode },
-      );
       const retrieval = await this.plugin.retriever.retrieve(
-        retrievalQueries,
+        propertyDirectives.searchQuery,
         this.plugin.settings.ohsEndpoints,
         this.selection,
         this.app.vault.getName(),
@@ -435,14 +426,6 @@ export class HybridChatView extends ItemView {
     setIcon(button, icon);
     button.addEventListener("click", handler);
     return button;
-  }
-}
-
-function parseSearchText(question: string): string {
-  try {
-    return parsePropertyDirectives(question).searchQuery;
-  } catch {
-    return question;
   }
 }
 

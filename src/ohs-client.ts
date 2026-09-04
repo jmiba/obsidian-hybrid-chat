@@ -25,7 +25,7 @@ type McpClientFactory = (endpoint: URL, clientInfo: { name: string; version: str
 export interface OhsGateway {
   search(
     endpoint: string,
-    queries: string[],
+    query: string,
     limit: number,
     rerank: boolean,
     frontmatter: string[],
@@ -47,7 +47,7 @@ export class OhsMcpClient implements OhsGateway {
 
   async search(
     endpoint: string,
-    queries: string[],
+    query: string,
     limit: number,
     rerank: boolean,
     frontmatter: string[],
@@ -61,7 +61,7 @@ export class OhsMcpClient implements OhsGateway {
         payload = await this.callToolOnce(
           endpoint,
           "search",
-          buildOhsSearchArguments(queries, limit, true, frontmatter),
+          buildOhsSearchArguments(query, limit, true, frontmatter),
           signal,
         );
       } catch (error) {
@@ -73,7 +73,7 @@ export class OhsMcpClient implements OhsGateway {
           () => this.callToolOnce(
             endpoint,
             "search",
-            buildOhsSearchArguments(queries, limit, false, frontmatter),
+            buildOhsSearchArguments(query, limit, false, frontmatter),
             signal,
           ),
           signal,
@@ -84,7 +84,7 @@ export class OhsMcpClient implements OhsGateway {
         () => this.callToolOnce(
           endpoint,
           "search",
-          buildOhsSearchArguments(queries, limit, false, frontmatter),
+          buildOhsSearchArguments(query, limit, false, frontmatter),
           signal,
         ),
         signal,
@@ -203,18 +203,13 @@ export class OhsMcpClient implements OhsGateway {
 }
 
 export function buildOhsSearchArguments(
-  queryOrQueries: string | string[],
+  query: string,
   limit: number,
   rerank: boolean,
   frontmatter: string[] = [],
 ): JsonRecord {
-  const queries = (Array.isArray(queryOrQueries) ? queryOrQueries : [queryOrQueries])
-    .map((query) => query.trim())
-    .filter((query, index, values) => query.length > 0 || (index === 0 && values.length === 1));
-  const [query = "", ...additionalQueries] = queries;
   return {
-    query,
-    ...(additionalQueries.length > 0 ? { queries: additionalQueries } : {}),
+    query: query.trim(),
     mode: "hybrid",
     limit,
     snippet_length: 600,
@@ -235,13 +230,10 @@ export function buildOhsRelatedArguments(path: string, frontmatter: string[] = [
   };
 }
 
-/** Preserve compatibility with older OHS servers whose search schema predates queries[]. */
+/** Drop optional related-search fields that an older advertised OHS schema does not support. */
 export function adaptSearchArgumentsForTool(args: JsonRecord, inputSchema: unknown): JsonRecord {
   const properties = asRecord(asRecord(inputSchema)?.properties);
   const compatible = { ...args };
-  if (Array.isArray(args.queries) && properties && !Object.prototype.hasOwnProperty.call(properties, "queries")) {
-    delete compatible.queries;
-  }
   if (args.related === true && properties) {
     for (const optionalName of ["direction", "link_type", "frontmatter", "snippet_length"]) {
       if (!Object.prototype.hasOwnProperty.call(properties, optionalName)) delete compatible[optionalName];

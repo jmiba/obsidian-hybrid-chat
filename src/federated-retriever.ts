@@ -37,7 +37,7 @@ export class FederatedRetriever {
   constructor(private readonly ohs: OhsGateway) {}
 
   async retrieve(
-    queries: string[],
+    query: string,
     endpoints: OhsEndpointConfig[],
     selection: VaultSelection,
     currentVaultName: string,
@@ -53,7 +53,7 @@ export class FederatedRetriever {
       results: await withEndpointTimeout(endpoint, "search", signal, (requestSignal) => (
         this.ohs.search(
           endpoint.endpoint,
-          queries,
+          query,
           options.searchLimitPerVault,
           options.enableReranking,
           options.frontmatterFilters,

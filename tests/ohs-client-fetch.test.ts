@@ -31,27 +31,14 @@ describe("OHS search arguments", () => {
       .toMatchObject({ frontmatter: ["status:todo", "-priority:low"] });
   });
 
-  it("uses OHS native multi-query fusion for recall variants", () => {
-    expect(buildOhsSearchArguments(["original question", "keyword variant", "contextual variant"], 12, true))
-      .toMatchObject({
-        query: "original question",
-        queries: ["keyword variant", "contextual variant"],
-        limit: 12,
-        rerank: true,
-      });
-  });
-
-  it("drops multi-query arguments for an older advertised tool schema", () => {
-    const args = buildOhsSearchArguments(["original", "variant"], 8, true);
-    const adapted = adaptSearchArgumentsForTool(args, {
-      type: "object",
-      properties: { query: { type: "string" }, limit: { type: "number" } },
+  it("sends exactly one trimmed retrieval query", () => {
+    expect(buildOhsSearchArguments("  original question  ", 12, true)).toEqual({
+      query: "original question",
+      mode: "hybrid",
+      limit: 12,
+      snippet_length: 600,
+      rerank: true,
     });
-    expect(adapted).not.toHaveProperty("queries");
-    expect(adaptSearchArgumentsForTool(args, {
-      type: "object",
-      properties: { query: { type: "string" }, queries: { type: "array" } },
-    })).toHaveProperty("queries", ["variant"]);
   });
 
   it("builds a vault-local one-hop links and backlinks request", () => {
@@ -78,7 +65,7 @@ describe("OHS capability caching", () => {
       initialize: vi.fn().mockResolvedValue(undefined),
       listTools: vi.fn().mockResolvedValue([{
         name: "vault_search",
-        inputSchema: { type: "object", properties: { query: {}, queries: {} } },
+        inputSchema: { type: "object", properties: { query: {} } },
       }]),
       callTool: vi.fn().mockResolvedValue({
         content: [{ type: "text", text: '{"results":[]}' }],
@@ -87,8 +74,8 @@ describe("OHS capability caching", () => {
     };
     const ohs = new OhsMcpClient(() => client, () => 1_000);
 
-    await ohs.search("http://127.0.0.1:3939/mcp", ["one", "two"], 8, false, []);
-    await ohs.search("http://127.0.0.1:3939/mcp", ["three"], 8, false, []);
+    await ohs.search("http://127.0.0.1:3939/mcp", "one", 8, false, []);
+    await ohs.search("http://127.0.0.1:3939/mcp", "three", 8, false, []);
 
     expect(client.initialize).toHaveBeenCalledTimes(2);
     expect(client.listTools).toHaveBeenCalledTimes(1);
@@ -111,9 +98,9 @@ describe("OHS capability caching", () => {
     };
     const ohs = new OhsMcpClient(() => client, () => now);
 
-    await ohs.search("http://127.0.0.1:3939/mcp", ["one"], 8, false, []);
+    await ohs.search("http://127.0.0.1:3939/mcp", "one", 8, false, []);
     now += 5 * 60_000;
-    await ohs.search("http://127.0.0.1:3939/mcp", ["two"], 8, false, []);
+    await ohs.search("http://127.0.0.1:3939/mcp", "two", 8, false, []);
 
     expect(client.listTools).toHaveBeenCalledTimes(2);
   });
@@ -137,7 +124,7 @@ describe("OHS capability caching", () => {
     };
     const response = await new OhsMcpClient(() => client).search(
       "http://127.0.0.1:3939/mcp",
-      ["question"],
+      "question",
       8,
       false,
       [],
@@ -163,7 +150,7 @@ describe("OHS capability caching", () => {
     };
     const response = await new OhsMcpClient(() => client).search(
       "http://127.0.0.1:3939/mcp",
-      ["question"],
+      "question",
       8,
       true,
       [],
