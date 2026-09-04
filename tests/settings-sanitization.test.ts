@@ -31,7 +31,14 @@ describe("settings sanitization", () => {
     expect(persisted.includeCurrentDateTime).toBe(true);
     expect(persisted.customSystemPrompt).toBe("Answer in German.");
     expect(persisted.enableOhsReranking).toBe(true);
+    expect(persisted.queryExpansionMode).toBe("follow-ups");
     expect(persisted.ohsEndpoints[0]?.requestTimeoutMs).toBe(60_000);
+  });
+
+  it("migrates query expansion safely and preserves valid choices", () => {
+    expect(loadSettings({}, "Vault").queryExpansionMode).toBe("follow-ups");
+    expect(loadSettings({ queryExpansionMode: "always" }, "Vault").queryExpansionMode).toBe("always");
+    expect(loadSettings({ queryExpansionMode: "invalid" }, "Vault").queryExpansionMode).toBe("follow-ups");
   });
 
   it("migrates endpoints without a timeout to the bounded default", () => {

@@ -165,6 +165,7 @@ export class HybridChatView extends ItemView {
       const retrievalQueries = buildRetrievalQueries(
         propertyDirectives.searchQuery,
         previousQuestions,
+        { expansionMode: this.plugin.settings.queryExpansionMode },
       );
       const retrieval = await this.plugin.retriever.retrieve(
         retrievalQueries,

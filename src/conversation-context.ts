@@ -1,4 +1,4 @@
-import type { ChatCompletionMessage, ChatMessage } from "./domain";
+import type { ChatCompletionMessage, ChatMessage, QueryExpansionMode } from "./domain";
 
 export const DEFAULT_CHAT_HISTORY_MESSAGES = 12;
 export const DEFAULT_CHAT_HISTORY_CHARACTERS = 12_000;
@@ -15,6 +15,7 @@ export interface RetrievalHistoryOptions {
   maxPreviousQuestions?: number;
   maxPreviousCharacters?: number;
   maxQueryVariants?: number;
+  expansionMode?: QueryExpansionMode;
 }
 
 const FOLLOW_UP_REFERENCE = /(?:^(?:and|also|then|next|what about|how about|und|auch|dann|danach|was ist mit|wie sieht es mit)\b|\b(?:it|its|they|them|their|he|him|his|she|her|hers|this|that|these|those|former|latter|there|er|sie|ihm|ihn|ihr|ihre|dies|diese|dieser|dieses|das|davon|dazu|darüber|dort)\b)/iu;
@@ -100,10 +101,10 @@ export function buildConversationSearchQuery(
 }
 
 /**
- * Builds a small, deterministic set of complementary OHS queries. The original
- * question is always first. Conversation context is added only for a likely
- * follow-up, and a compact lexical variant gives BM25 another useful view while
- * OHS performs the actual multi-query RRF merge and reranking.
+ * Builds a small, deterministic set of OHS queries. The original question is
+ * always first. By default, conversation context is added only for a likely
+ * follow-up. A compact lexical variant is available as an explicit opt-in
+ * because OHS gives every query variant influence during RRF fusion.
  */
 export function buildRetrievalQueries(
   currentQuestion: string,
@@ -112,6 +113,9 @@ export function buildRetrievalQueries(
 ): string[] {
   const current = normalizeQuestion(currentQuestion);
   if (!current) return [""];
+
+  const expansionMode = options.expansionMode ?? "follow-ups";
+  if (expansionMode === "off") return [current];
 
   const maxVariants = Math.max(1, options.maxQueryVariants ?? DEFAULT_RETRIEVAL_QUERY_VARIANTS);
   const variants: string[] = [];
@@ -128,10 +132,12 @@ export function buildRetrievalQueries(
     : current;
   if (contextDependent) addVariant(contextual);
 
-  const lexicalInput = contextDependent
-    ? `${recentQuestions(previousQuestions, options).join(" ")} ${current}`
-    : current;
-  addVariant(buildLexicalVariant(lexicalInput));
+  if (expansionMode === "always") {
+    const lexicalInput = contextDependent
+      ? `${recentQuestions(previousQuestions, options).join(" ")} ${current}`
+      : current;
+    addVariant(buildLexicalVariant(lexicalInput));
+  }
   return variants.slice(0, maxVariants);
 }
 

@@ -8,7 +8,7 @@ It does **not** create a vector index, read OHS SQLite databases, or duplicate i
 
 1. The sidebar selects the current vault, explicitly selected vaults, or every enabled vault.
 2. `OhsMcpClient` queries the configured stateless Streamable HTTP MCP endpoints concurrently through Obsidian's desktop HTTP API, avoiding browser CORS requirements for loopback services.
-3. Hybrid Chat sends the original question plus a compact lexical recall variant through OHS `queries[]`. Referential follow-ups also receive a bounded contextual variant. OHS performs per-vault multi-query RRF and then applies its native cross-encoder reranker once; endpoints with an older advertised schema receive only the original query.
+3. Hybrid Chat sends the original question to OHS. With the default **Follow-ups only** query-expansion mode, referential follow-ups also receive one bounded contextual variant through OHS `queries[]`. The optional **Always** mode adds a compact lexical recall variant. OHS performs per-vault multi-query RRF and then applies its native cross-encoder reranker once; endpoints with an older advertised schema receive only the original query.
 4. Explicit YAML directives map to OHS frontmatter filters: `@property(status=todo)` includes an exact value, `@property(status!=done)` excludes one, and `@property(publication_date)` requests a property without filtering.
 5. Conversation history is added to retrieval only when the current question appears referential, allowing references such as “she”, “that project”, or “the second one” to retain their subject without pulling self-contained questions toward stale topics. Assistant answers are not sent to OHS. `FederatedRetriever` merges the resulting per-vault ranks without comparing raw cross-vault scores, and a diversity pass gives each healthy vault a chance to contribute.
 6. Only the globally selected note paths are sent to OHS `read`. If a selected path is missing or a vault read fails, the retriever moves down the ranked candidates until the requested number of readable notes is filled or candidates are exhausted. Unavailable endpoints remain visible partial failures.
@@ -21,7 +21,7 @@ The source is split into the OHS client, federated retriever, rank fusion, conte
 
 ## Privacy boundaries
 
-- OHS endpoints may be local or remote. Every selected endpoint receives the current query and deterministic recall variants. On referential follow-up turns, one variant includes a bounded excerpt containing up to three earlier user questions. Assistant answers are not included in OHS queries.
+- OHS endpoints may be local or remote. Every selected endpoint receives the current query. Depending on the query-expansion setting, referential follow-ups may also include a bounded excerpt containing up to three earlier user questions, and **Always** may add a deterministic lexical variant. Assistant answers are not included in OHS queries.
 - The configured chat provider receives the packed source text and up to 12 recent non-empty chat messages within a 12,000-character transcript budget. The current question is always retained. A loopback provider can keep generation local; a cloud provider sends that data to the provider.
 - Remote chat endpoints must use HTTPS. Plain HTTP is accepted only for loopback hosts.
 - API keys are stored by Obsidian `SecretStorage` through `SecretComponent`. Plugin data contains only secret identifiers.
@@ -39,6 +39,7 @@ In Obsidian settings:
 - Optionally customize language, tone, role, or answer structure. Grounding/citation rules remain enforced separately.
 - Keep the local current-date/time injection enabled when relative dates such as “today” or “last week” matter.
 - OHS reranking is enabled by default. Disable it when lower latency matters more than precision. The reranker model is configured on each OHS server, not in this plugin.
+- Keep query expansion at **Follow-ups only** for the best default precision: ordinary questions are sent unchanged, while referential follow-ups receive bounded conversational context. Use **Off** for strict single-query retrieval or **Always** to opt into the broader lexical variant.
 - Use explicit YAML directives in chat prompts: `@property(field=value)` filters by an exact value, `@property(field!=value)` excludes it, and `@property(field)` adds that current-vault value to answer context without filtering.
 - Adjust per-vault search, global note-read, and context limits.
 

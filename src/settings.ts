@@ -15,6 +15,7 @@ import type {
   ChatSession,
   HybridChatSettings,
   OhsEndpointConfig,
+  QueryExpansionMode,
   RetrievalFailure,
   RetrievedSource,
 } from "./domain";
@@ -44,6 +45,7 @@ export function defaultSettings(currentVaultName: string): HybridChatSettings {
     searchLimitPerVault: 8,
     maxNotes: 6,
     enableOhsReranking: true,
+    queryExpansionMode: "follow-ups",
     maxContextChars: 24000,
     maxCharsPerNote: 6000,
     includeCurrentDateTime: true,
@@ -82,6 +84,7 @@ export function loadSettings(raw: unknown, currentVaultName: string): HybridChat
     searchLimitPerVault: boundedInteger(value.searchLimitPerVault, 1, 50, fallback.searchLimitPerVault),
     maxNotes: boundedInteger(value.maxNotes, 1, 20, fallback.maxNotes),
     enableOhsReranking: value.enableOhsReranking !== false,
+    queryExpansionMode: parseQueryExpansionMode(value.queryExpansionMode, fallback.queryExpansionMode),
     maxContextChars: boundedInteger(value.maxContextChars, 1000, 200000, fallback.maxContextChars),
     maxCharsPerNote: boundedInteger(value.maxCharsPerNote, 500, 50000, fallback.maxCharsPerNote),
     includeCurrentDateTime: value.includeCurrentDateTime !== false,
@@ -119,6 +122,7 @@ export function sanitizeSettingsForPersistence(settings: HybridChatSettings): Hy
     searchLimitPerVault: settings.searchLimitPerVault,
     maxNotes: settings.maxNotes,
     enableOhsReranking: Boolean(settings.enableOhsReranking),
+    queryExpansionMode: parseQueryExpansionMode(settings.queryExpansionMode, "follow-ups"),
     maxContextChars: settings.maxContextChars,
     maxCharsPerNote: settings.maxCharsPerNote,
     includeCurrentDateTime: Boolean(settings.includeCurrentDateTime),
@@ -167,7 +171,7 @@ export class HybridChatSettingTab extends PluginSettingTab {
       },
       {
         type: "group",
-        heading: "Retrieval limits",
+        heading: "Retrieval",
         items: this.retrievalDefinitions(),
       },
     ];
@@ -324,6 +328,19 @@ export class HybridChatSettingTab extends PluginSettingTab {
 
   private retrievalDefinitions(): SettingDefinition[] {
     return [
+      this.definition(
+        "Query expansion",
+        "Follow-ups only adds bounded chat context when a question appears referential. Always also sends a heuristic lexical variant, which can improve recall but reduce precision. Off sends only the original question.",
+        (setting) => setting.addDropdown((dropdown) => dropdown
+          .addOption("off", "Off")
+          .addOption("follow-ups", "Follow-ups only")
+          .addOption("always", "Always")
+          .setValue(this.plugin.settings.queryExpansionMode)
+          .onChange((value) => {
+            this.plugin.settings.queryExpansionMode = parseQueryExpansionMode(value, "follow-ups");
+            this.persist();
+          })),
+      ),
       this.definition(
         "Enable OHS cross-encoder reranking",
         "Rerank each vault's hybrid candidates inside OHS before cross-vault fusion. The OHS service controls and caches its reranker model; this plugin sends only rerank: true.",
@@ -541,6 +558,10 @@ function asStringArray(value: unknown): string[] {
 function boundedInteger(value: unknown, min: number, max: number, fallback: number): number {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? Math.max(min, Math.min(max, Math.round(parsed))) : fallback;
+}
+
+function parseQueryExpansionMode(value: unknown, fallback: QueryExpansionMode): QueryExpansionMode {
+  return value === "off" || value === "follow-ups" || value === "always" ? value : fallback;
 }
 
 function stableId(value: string): string {

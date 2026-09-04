@@ -1,4 +1,5 @@
 export type VaultSelectionMode = "current" | "specific" | "all";
+export type QueryExpansionMode = "off" | "follow-ups" | "always";
 
 export const DEFAULT_OHS_REQUEST_TIMEOUT_MS = 60_000;
 
@@ -93,6 +94,7 @@ export interface HybridChatSettings {
   searchLimitPerVault: number;
   maxNotes: number;
   enableOhsReranking: boolean;
+  queryExpansionMode: QueryExpansionMode;
   maxContextChars: number;
   maxCharsPerNote: number;
   includeCurrentDateTime: boolean;

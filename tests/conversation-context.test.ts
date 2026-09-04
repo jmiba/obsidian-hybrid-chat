@@ -77,28 +77,51 @@ describe("conversation-aware retrieval", () => {
     expect(query).toContain("- three");
   });
 
-  it("adds a compact lexical variant for a self-contained question", () => {
+  it("keeps self-contained questions unchanged by default", () => {
     expect(buildRetrievalQueries(
       "What were the conclusions of the Ada study in 2024?",
       ["Tell me about an unrelated project"],
-    )).toEqual([
-      "What were the conclusions of the Ada study in 2024?",
-      "conclusions Ada study 2024",
-    ]);
+    )).toEqual(["What were the conclusions of the Ada study in 2024?"]);
   });
 
-  it("uses earlier questions only when the current question is referential", () => {
+  it("adds earlier questions only when the current question is referential", () => {
     const variants = buildRetrievalQueries(
       "What did she publish next?",
       ["Who is Ada?", "What project did Ada lead?"],
     );
-    expect(variants).toHaveLength(3);
+    expect(variants).toHaveLength(2);
     expect(variants[0]).toBe("What did she publish next?");
     expect(variants[1]).toContain("Earlier questions in this chat");
-    expect(variants[2]).toContain("Ada");
 
     expect(buildRetrievalQueries("Ada publications", ["Tell me about Project X"]))
       .toEqual(["Ada publications"]);
+  });
+
+  it("can opt in to lexical variants for every question", () => {
+    expect(buildRetrievalQueries(
+      "What were the conclusions of the Ada study in 2024?",
+      ["Tell me about an unrelated project"],
+      { expansionMode: "always" },
+    )).toEqual([
+      "What were the conclusions of the Ada study in 2024?",
+      "conclusions Ada study 2024",
+    ]);
+
+    const followUpVariants = buildRetrievalQueries(
+      "What did she publish next?",
+      ["Who is Ada?", "What project did Ada lead?"],
+      { expansionMode: "always" },
+    );
+    expect(followUpVariants).toHaveLength(3);
+    expect(followUpVariants[2]).toContain("Ada");
+  });
+
+  it("can turn off expansion even for referential follow-ups", () => {
+    expect(buildRetrievalQueries(
+      "What did she publish next?",
+      ["Who is Ada?"],
+      { expansionMode: "off" },
+    )).toEqual(["What did she publish next?"]);
   });
 
   it("preserves an empty query for filter-only retrieval", () => {
