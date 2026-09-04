@@ -10,6 +10,7 @@
 .ohc-composer {
   padding: var(--size-4-2);
   border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 30px;
 }
 
 .ohc-title {
