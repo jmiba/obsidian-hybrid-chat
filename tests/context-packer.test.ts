@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildGroundedSystemPrompt, formatCurrentDateTime, packContext } from "../src/context-packer";
+import {
+  buildGroundedSystemPrompt,
+  extractRelevantExcerpt,
+  formatCurrentDateTime,
+  packContext,
+} from "../src/context-packer";
 import type { RetrievedSource } from "../src/domain";
 
 const source = (id: string, content: string): RetrievedSource => ({
@@ -18,6 +23,33 @@ describe("context packing", () => {
     expect(packed.text).toContain("[S1]");
     expect(packed.sources[0]?.sourceId).toBe("vault::one.md");
     expect(packed.truncated).toBe(true);
+  });
+
+  it("centers a long-note excerpt on the matching search passage", () => {
+    const content = `${"opening material ".repeat(80)}\n\n## Findings\nThe steamship trial reduced travel time by forty percent.\n\n${"appendix ".repeat(80)}`;
+    const excerpt = extractRelevantExcerpt(
+      content,
+      "## Findings\nThe steamship trial reduced travel time by forty percent.",
+      240,
+    );
+    expect(excerpt.length).toBeLessThanOrEqual(240);
+    expect(excerpt).toContain("steamship trial reduced travel time");
+    expect(excerpt).not.toContain("opening material opening material opening material");
+  });
+
+  it("falls back to the note beginning when the snippet cannot be anchored", () => {
+    const excerpt = extractRelevantExcerpt("Beginning of note. ".repeat(30), "unmatched passage", 80);
+    expect(excerpt).toContain("Beginning of note");
+    expect(excerpt.length).toBeLessThanOrEqual(80);
+  });
+
+  it("retains explicitly requested property context beside the relevant passage", () => {
+    const content = `${"intro ".repeat(100)}important evidence here${" tail".repeat(100)}`
+      + "\n\nRequested YAML properties:\n- status: active";
+    const excerpt = extractRelevantExcerpt(content, "important evidence here", 220);
+    expect(excerpt).toContain("important evidence here");
+    expect(excerpt).toContain("Requested YAML properties");
+    expect(excerpt.length).toBeLessThanOrEqual(220);
   });
 });
 

@@ -3,6 +3,7 @@ import type { ChatMessage } from "../src/domain";
 import {
   buildConversationSearchQuery,
   buildRecentChatMessages,
+  buildRetrievalQueries,
 } from "../src/conversation-context";
 
 const message = (id: string, role: ChatMessage["role"], content: string): ChatMessage => ({
@@ -74,5 +75,33 @@ describe("conversation-aware retrieval", () => {
     expect(query).not.toContain("- one");
     expect(query).toContain("- two");
     expect(query).toContain("- three");
+  });
+
+  it("adds a compact lexical variant for a self-contained question", () => {
+    expect(buildRetrievalQueries(
+      "What were the conclusions of the Ada study in 2024?",
+      ["Tell me about an unrelated project"],
+    )).toEqual([
+      "What were the conclusions of the Ada study in 2024?",
+      "conclusions Ada study 2024",
+    ]);
+  });
+
+  it("uses earlier questions only when the current question is referential", () => {
+    const variants = buildRetrievalQueries(
+      "What did she publish next?",
+      ["Who is Ada?", "What project did Ada lead?"],
+    );
+    expect(variants).toHaveLength(3);
+    expect(variants[0]).toBe("What did she publish next?");
+    expect(variants[1]).toContain("Earlier questions in this chat");
+    expect(variants[2]).toContain("Ada");
+
+    expect(buildRetrievalQueries("Ada publications", ["Tell me about Project X"]))
+      .toEqual(["Ada publications"]);
+  });
+
+  it("preserves an empty query for filter-only retrieval", () => {
+    expect(buildRetrievalQueries("", ["Earlier question"])).toEqual([""]);
   });
 });

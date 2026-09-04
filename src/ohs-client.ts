@@ -15,7 +15,7 @@ export interface OhsReadResult {
 export interface OhsGateway {
   search(
     endpoint: string,
-    query: string,
+    queries: string[],
     limit: number,
     rerank: boolean,
     frontmatter: string[],
@@ -27,7 +27,7 @@ export interface OhsGateway {
 export class OhsMcpClient implements OhsGateway {
   async search(
     endpoint: string,
-    query: string,
+    queries: string[],
     limit: number,
     rerank: boolean,
     frontmatter: string[],
@@ -41,7 +41,7 @@ export class OhsMcpClient implements OhsGateway {
         payload = await this.callToolOnce(
           endpoint,
           "search",
-          buildOhsSearchArguments(query, limit, true, frontmatter),
+          buildOhsSearchArguments(queries, limit, true, frontmatter),
           signal,
         );
       } catch (error) {
@@ -53,7 +53,7 @@ export class OhsMcpClient implements OhsGateway {
           () => this.callToolOnce(
             endpoint,
             "search",
-            buildOhsSearchArguments(query, limit, false, frontmatter),
+            buildOhsSearchArguments(queries, limit, false, frontmatter),
             signal,
           ),
           signal,
@@ -64,7 +64,7 @@ export class OhsMcpClient implements OhsGateway {
         () => this.callToolOnce(
           endpoint,
           "search",
-          buildOhsSearchArguments(query, limit, false, frontmatter),
+          buildOhsSearchArguments(queries, limit, false, frontmatter),
           signal,
         ),
         signal,
@@ -116,7 +116,10 @@ export class OhsMcpClient implements OhsGateway {
       const tool = tools.find(({ name }) => name === requestedName)
         ?? tools.find(({ name }) => name.endsWith(`_${requestedName}`));
       if (!tool) throw new Error(`OHS endpoint does not expose ${requestedName}`);
-      const result = await client.callTool(tool.name, args, signal);
+      const callArguments = requestedName === "search"
+        ? adaptSearchArgumentsForTool(args, tool.inputSchema)
+        : args;
+      const result = await client.callTool(tool.name, callArguments, signal);
       if (result.isError) throw new Error(extractText(result.content) || `${requestedName} failed`);
       if (result.structuredContent) return result.structuredContent;
       const text = extractText(result.content);
@@ -133,19 +136,34 @@ export class OhsMcpClient implements OhsGateway {
 }
 
 export function buildOhsSearchArguments(
-  query: string,
+  queryOrQueries: string | string[],
   limit: number,
   rerank: boolean,
   frontmatter: string[] = [],
 ): JsonRecord {
+  const queries = (Array.isArray(queryOrQueries) ? queryOrQueries : [queryOrQueries])
+    .map((query) => query.trim())
+    .filter((query, index, values) => query.length > 0 || (index === 0 && values.length === 1));
+  const [query = "", ...additionalQueries] = queries;
   return {
     query,
+    ...(additionalQueries.length > 0 ? { queries: additionalQueries } : {}),
     mode: "hybrid",
     limit,
     snippet_length: 600,
     rerank,
     ...(frontmatter.length > 0 ? { frontmatter } : {}),
   };
+}
+
+/** Preserve compatibility with older OHS servers whose search schema predates queries[]. */
+export function adaptSearchArgumentsForTool(args: JsonRecord, inputSchema: unknown): JsonRecord {
+  if (!Array.isArray(args.queries)) return args;
+  const properties = asRecord(asRecord(inputSchema)?.properties);
+  if (!properties || Object.prototype.hasOwnProperty.call(properties, "queries")) return args;
+  const compatible = { ...args };
+  delete compatible.queries;
+  return compatible;
 }
 
 export function isTransientOhsError(error: unknown): boolean {

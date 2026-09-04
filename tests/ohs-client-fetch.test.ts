@@ -7,6 +7,7 @@ vi.mock("obsidian", () => ({
 vi.stubGlobal("window", { clearTimeout, setTimeout });
 
 import {
+  adaptSearchArgumentsForTool,
   buildOhsSearchArguments,
   isTransientOhsError,
   withTransientOhsRetries,
@@ -26,6 +27,29 @@ describe("OHS search arguments", () => {
   it("passes exact property filters through the OHS frontmatter contract", () => {
     expect(buildOhsSearchArguments("mail", 8, true, ["status:todo", "-priority:low"]))
       .toMatchObject({ frontmatter: ["status:todo", "-priority:low"] });
+  });
+
+  it("uses OHS native multi-query fusion for recall variants", () => {
+    expect(buildOhsSearchArguments(["original question", "keyword variant", "contextual variant"], 12, true))
+      .toMatchObject({
+        query: "original question",
+        queries: ["keyword variant", "contextual variant"],
+        limit: 12,
+        rerank: true,
+      });
+  });
+
+  it("drops multi-query arguments for an older advertised tool schema", () => {
+    const args = buildOhsSearchArguments(["original", "variant"], 8, true);
+    const adapted = adaptSearchArgumentsForTool(args, {
+      type: "object",
+      properties: { query: { type: "string" }, limit: { type: "number" } },
+    });
+    expect(adapted).not.toHaveProperty("queries");
+    expect(adaptSearchArgumentsForTool(args, {
+      type: "object",
+      properties: { query: { type: "string" }, queries: { type: "array" } },
+    })).toHaveProperty("queries", ["variant"]);
   });
 });
 

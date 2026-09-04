@@ -18,6 +18,9 @@ export function fuseRankedResults(
   limit: number,
   rrfK = 60,
 ): NamespacedSearchResult[] {
+  // OHS has already fused the query variants within each vault. This layer
+  // normalizes only per-vault rank positions because raw scores from separately
+  // configured services are not comparable, then preserves vault diversity.
   const candidates = ranked.flatMap(({ endpoint, results }, vaultOrder) => (
     results.map((result, index) => {
       const rank = Number.isInteger(result.rank) && result.rank > 0 ? result.rank : index + 1;

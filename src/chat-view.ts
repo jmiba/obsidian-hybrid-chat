@@ -16,7 +16,7 @@ import { buildObsidianOpenUri, openCitation } from "./citation-mapper";
 import { appendRequestedProperties, parsePropertyDirectives } from "./property-directives";
 import { chatWorkLabel, shouldShowSources, type ChatWorkPhase } from "./chat-progress";
 import { messageClipboardText, removeMessageById } from "./chat-message-actions";
-import { buildConversationSearchQuery, buildRecentChatMessages } from "./conversation-context";
+import { buildRecentChatMessages, buildRetrievalQueries } from "./conversation-context";
 
 export const VIEW_TYPE_HYBRID_CHAT = "obsidian-hybrid-chat-view";
 
@@ -162,12 +162,12 @@ export class HybridChatView extends ItemView {
       const previousQuestions = session.messages
         .filter((message) => message.role === "user" && message.id !== userMessage.id)
         .map((message) => parseSearchText(message.content));
-      const retrievalQuery = buildConversationSearchQuery(
+      const retrievalQueries = buildRetrievalQueries(
         propertyDirectives.searchQuery,
         previousQuestions,
       );
       const retrieval = await this.plugin.retriever.retrieve(
-        retrievalQuery,
+        retrievalQueries,
         this.plugin.settings.ohsEndpoints,
         this.selection,
         this.app.vault.getName(),

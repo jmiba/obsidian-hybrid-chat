@@ -11,12 +11,12 @@ class FakeGateway implements OhsGateway {
 
   search(
     endpoint: string,
-    query: string,
+    queries: string[],
     limit: number,
     rerank: boolean,
     frontmatter: string[],
   ): Promise<SearchResult[]> {
-    void query;
+    void queries;
     void limit;
     void frontmatter;
     this.rerankFlags.push(rerank);
@@ -42,7 +42,7 @@ describe("endpoint partial failure", () => {
   it("continues with healthy vaults and reads only globally selected notes", async () => {
     const gateway = new FakeGateway();
     const result = await new FederatedRetriever(gateway).retrieve(
-      "question",
+      ["question"],
       endpoints,
       { mode: "all", vaultIds: [] },
       "A",
@@ -58,7 +58,7 @@ describe("endpoint partial failure", () => {
   it("marks retrieval unavailable when every selected OHS search fails", async () => {
     const gateway = new FakeGateway();
     const result = await new FederatedRetriever(gateway).retrieve(
-      "question",
+      ["question"],
       [endpoints[1]!],
       { mode: "all", vaultIds: [] },
       "B",
@@ -72,14 +72,14 @@ describe("endpoint partial failure", () => {
     class HangingGateway extends FakeGateway {
       override search(
         endpoint: string,
-        query: string,
+        queries: string[],
         limit: number,
         rerank: boolean,
         frontmatter: string[],
         signal?: AbortSignal,
       ): Promise<SearchResult[]> {
         void endpoint;
-        void query;
+        void queries;
         void limit;
         void rerank;
         void frontmatter;
@@ -90,7 +90,7 @@ describe("endpoint partial failure", () => {
     }
 
     const result = await new FederatedRetriever(new HangingGateway()).retrieve(
-      "question",
+      ["question"],
       [{ ...endpoints[0]!, requestTimeoutMs: 5 }],
       { mode: "all", vaultIds: [] },
       "A",
@@ -114,12 +114,40 @@ describe("endpoint partial failure", () => {
     }
 
     await expect(new FederatedRetriever(new CanceledGateway()).retrieve(
-      "question",
+      ["question"],
       [endpoints[0]!],
       { mode: "all", vaultIds: [] },
       "A",
       { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, frontmatterFilters: [] },
       controller.signal,
     )).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("backfills a missing top-ranked note without reading lower candidates eagerly", async () => {
+    class MissingTopGateway extends FakeGateway {
+      override read(endpoint: string, paths: string[]): Promise<OhsReadResult[]> {
+        this.reads.push({ endpoint, paths });
+        return Promise.resolve(paths.map((path) => ({
+          path,
+          title: path,
+          content: path === "one.md" ? "" : `content:${path}`,
+          found: path !== "one.md",
+        })));
+      }
+    }
+
+    const gateway = new MissingTopGateway();
+    const result = await new FederatedRetriever(gateway).retrieve(
+      ["question", "keyword variant"],
+      [endpoints[0]!],
+      { mode: "all", vaultIds: [] },
+      "A",
+      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, frontmatterFilters: [] },
+    );
+    expect(result.sources.map((source) => source.sourceId)).toEqual(["healthy::two.md"]);
+    expect(gateway.reads).toEqual([
+      { endpoint: "http://healthy/mcp", paths: ["one.md"] },
+      { endpoint: "http://healthy/mcp", paths: ["two.md"] },
+    ]);
   });
 });
