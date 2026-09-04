@@ -21,7 +21,11 @@ import {
   type ChatWorkPhase,
 } from "./chat-progress";
 import { messageClipboardText, removeMessageById } from "./chat-message-actions";
-import { buildRecentChatMessages, buildRetrievalQueries } from "./conversation-context";
+import {
+  buildRecentChatMessages,
+  buildRetrievalQueries,
+  shouldTraverseRelatedNotes,
+} from "./conversation-context";
 
 export const VIEW_TYPE_HYBRID_CHAT = "obsidian-hybrid-chat-view";
 
@@ -194,6 +198,8 @@ export class HybridChatView extends ItemView {
           searchLimitPerVault: this.plugin.settings.searchLimitPerVault,
           maxNotes: this.plugin.settings.maxNotes,
           enableReranking: this.plugin.settings.enableOhsReranking,
+          enableRelatedTraversal: this.plugin.settings.enableRelatedNoteTraversal
+            && shouldTraverseRelatedNotes(propertyDirectives.searchQuery),
           frontmatterFilters: propertyDirectives.frontmatterFilters,
         },
         this.controller.signal,
@@ -354,7 +360,11 @@ export class HybridChatView extends ItemView {
       const item = list.createEl("li");
       const button = item.createEl("button", { cls: "ohc-source-link" });
       button.createSpan({ cls: "ohc-source-label", text: source.title || source.path });
-      button.createSpan({ cls: "ohc-source-path", text: `${source.vaultDisplayName} :: ${source.path}` });
+      const relationLabel = source.retrievalKind === "related" ? " · linked note" : "";
+      button.createSpan({
+        cls: "ohc-source-path",
+        text: `${source.vaultDisplayName} :: ${source.path}${relationLabel}`,
+      });
       button.addEventListener("click", () => void openCitation(this.app, source).then((opened) => {
         if (!opened) new Notice("Citation target is invalid or unavailable.");
       }));

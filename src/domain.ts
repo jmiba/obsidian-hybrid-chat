@@ -34,6 +34,8 @@ export interface SearchResult {
   rank: number;
   score?: number | null;
   tags?: string[];
+  retrievalKind?: "direct" | "related";
+  relatedFromPath?: string;
 }
 
 export interface NamespacedSearchResult extends SearchResult {
@@ -51,7 +53,7 @@ export interface RetrievedSource extends NamespacedSearchResult {
 export interface RetrievalFailure {
   vaultId: string;
   vaultDisplayName: string;
-  stage: "search" | "read";
+  stage: "search" | "related" | "read";
   kind: "timeout" | "error";
   message: string;
 }
@@ -95,6 +97,7 @@ export interface HybridChatSettings {
   maxNotes: number;
   enableOhsReranking: boolean;
   queryExpansionMode: QueryExpansionMode;
+  enableRelatedNoteTraversal: boolean;
   maxContextChars: number;
   maxCharsPerNote: number;
   includeCurrentDateTime: boolean;

@@ -46,6 +46,7 @@ export function defaultSettings(currentVaultName: string): HybridChatSettings {
     maxNotes: 6,
     enableOhsReranking: true,
     queryExpansionMode: "follow-ups",
+    enableRelatedNoteTraversal: false,
     maxContextChars: 24000,
     maxCharsPerNote: 6000,
     includeCurrentDateTime: true,
@@ -85,6 +86,7 @@ export function loadSettings(raw: unknown, currentVaultName: string): HybridChat
     maxNotes: boundedInteger(value.maxNotes, 1, 20, fallback.maxNotes),
     enableOhsReranking: value.enableOhsReranking !== false,
     queryExpansionMode: parseQueryExpansionMode(value.queryExpansionMode, fallback.queryExpansionMode),
+    enableRelatedNoteTraversal: value.enableRelatedNoteTraversal === true,
     maxContextChars: boundedInteger(value.maxContextChars, 1000, 200000, fallback.maxContextChars),
     maxCharsPerNote: boundedInteger(value.maxCharsPerNote, 500, 50000, fallback.maxCharsPerNote),
     includeCurrentDateTime: value.includeCurrentDateTime !== false,
@@ -123,6 +125,7 @@ export function sanitizeSettingsForPersistence(settings: HybridChatSettings): Hy
     maxNotes: settings.maxNotes,
     enableOhsReranking: Boolean(settings.enableOhsReranking),
     queryExpansionMode: parseQueryExpansionMode(settings.queryExpansionMode, "follow-ups"),
+    enableRelatedNoteTraversal: Boolean(settings.enableRelatedNoteTraversal),
     maxContextChars: settings.maxContextChars,
     maxCharsPerNote: settings.maxCharsPerNote,
     includeCurrentDateTime: Boolean(settings.includeCurrentDateTime),
@@ -348,6 +351,13 @@ export class HybridChatSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.enableOhsReranking)
           .onChange((value) => { this.plugin.settings.enableOhsReranking = value; this.persist(); })),
       ),
+      this.definition(
+        "Enable one-hop related notes",
+        "For relationship-oriented questions only, expand the best direct result from each vault through one hop of explicit links and backlinks. Disabled by default.",
+        (setting) => setting.addToggle((toggle) => toggle
+          .setValue(this.plugin.settings.enableRelatedNoteTraversal)
+          .onChange((value) => { this.plugin.settings.enableRelatedNoteTraversal = value; this.persist(); })),
+      ),
       this.numberDefinition("Results per vault", "Candidates requested from each healthy OHS endpoint.", "searchLimitPerVault", 1, 50),
       this.numberDefinition("Notes read", "Global post-fusion notes fetched with OHS read.", "maxNotes", 1, 20),
       this.numberDefinition("Total context characters", "Maximum source text sent to the chat provider.", "maxContextChars", 1000, 200000),
@@ -427,6 +437,8 @@ function sanitizeSource(source: RetrievedSource): RetrievedSource {
     rank: source.rank,
     score: source.score,
     tags: source.tags ? [...source.tags] : undefined,
+    retrievalKind: source.retrievalKind,
+    relatedFromPath: source.relatedFromPath,
     vaultId: source.vaultId,
     vaultDisplayName: source.vaultDisplayName,
     obsidianVaultName: source.obsidianVaultName,
@@ -496,7 +508,9 @@ function parseMessage(value: unknown): ChatMessage[] {
   const sources = Array.isArray(item.sources) ? item.sources.flatMap(parseSource) : undefined;
   const failures: RetrievalFailure[] | undefined = Array.isArray(item.failures) ? item.failures.flatMap((failure) => {
     const record = asRecord(failure);
-    const stage: RetrievalFailure["stage"] | null = record?.stage === "search" || record?.stage === "read"
+    const stage: RetrievalFailure["stage"] | null = record?.stage === "search"
+      || record?.stage === "related"
+      || record?.stage === "read"
       ? record.stage
       : null;
     if (!record || !stage) return [];
@@ -532,6 +546,8 @@ function parseSource(value: unknown): RetrievedSource[] {
     rank: boundedInteger(item.rank, 1, Number.MAX_SAFE_INTEGER, 1),
     score: typeof item.score === "number" && Number.isFinite(item.score) ? item.score : null,
     tags: asStringArray(item.tags),
+    retrievalKind: item.retrievalKind === "related" ? "related" : "direct",
+    relatedFromPath: asString(item.relatedFromPath) || undefined,
     vaultId,
     vaultDisplayName: asString(item.vaultDisplayName),
     obsidianVaultName: asString(item.obsidianVaultName),

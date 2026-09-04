@@ -3,6 +3,7 @@ import type {
   RetrievalFailure,
   RetrievalResult,
   RetrievedSource,
+  SearchResult,
   VaultSelection,
 } from "./domain";
 import type { OhsGateway } from "./ohs-client";
@@ -12,14 +13,17 @@ export interface RetrievalOptions {
   searchLimitPerVault: number;
   maxNotes: number;
   enableReranking: boolean;
+  enableRelatedTraversal: boolean;
   frontmatterFilters: string[];
 }
+
+const RELATED_RESULTS_PER_ANCHOR = 2;
 
 export class OhsRequestTimeoutError extends Error {
   readonly name = "OhsRequestTimeoutError";
 
   constructor(
-    readonly stage: "search" | "read",
+    readonly stage: RetrievalFailure["stage"],
     readonly timeoutMs: number,
   ) {
     super(
@@ -62,12 +66,19 @@ export class FederatedRetriever {
     searchSettled.forEach((settled, index) => {
       const endpoint = selectedEndpoints[index];
       if (!endpoint) return;
-      if (settled.status === "fulfilled") healthySearches.push(settled.value);
-      else failures.push(failure(endpoint, "search", settled.reason));
+      if (settled.status === "fulfilled") {
+        healthySearches.push({
+          endpoint: settled.value.endpoint,
+          results: settled.value.results.map((result) => ({ ...result, retrievalKind: "direct" })),
+        });
+      } else failures.push(failure(endpoint, "search", settled.reason));
     });
 
-    const candidateCount = healthySearches.reduce((total, item) => total + item.results.length, 0);
-    const globallyRanked = fuseRankedResults(healthySearches, candidateCount);
+    const searchesWithRelated = options.enableRelatedTraversal
+      ? await this.expandRelated(healthySearches, options.frontmatterFilters, failures, signal)
+      : healthySearches;
+    const candidateCount = searchesWithRelated.reduce((total, item) => total + item.results.length, 0);
+    const globallyRanked = fuseRankedResults(searchesWithRelated, candidateCount);
     const globalOrder = new Map(globallyRanked.map((source, index) => [source.sourceId, index]));
     const sourcesById = new Map<string, RetrievedSource>();
     const failedReadVaults = new Set<string>();
@@ -130,6 +141,82 @@ export class FederatedRetriever {
       allSearchesFailed: healthySearches.length === 0,
     };
   }
+
+  private async expandRelated(
+    searches: RankedVaultResults[],
+    frontmatterFilters: string[],
+    failures: RetrievalFailure[],
+    signal?: AbortSignal,
+  ): Promise<RankedVaultResults[]> {
+    const anchors = searches.flatMap((search) => {
+      const anchor = search.results[0];
+      return anchor ? [{ endpoint: search.endpoint, anchor }] : [];
+    });
+    if (anchors.length === 0) return searches;
+
+    const relatedSettled = await Promise.allSettled(anchors.map(async ({ endpoint, anchor }) => ({
+      endpoint,
+      anchor,
+      results: await withEndpointTimeout(endpoint, "related", signal, (requestSignal) => (
+        this.ohs.related(endpoint.endpoint, anchor.path, frontmatterFilters, requestSignal)
+      )),
+    })));
+    if (signal?.aborted) throw abortError();
+
+    const relatedByVault = new Map<string, { anchorPath: string; results: SearchResult[] }>();
+    relatedSettled.forEach((settled, index) => {
+      const fallback = anchors[index];
+      if (settled.status === "fulfilled") {
+        relatedByVault.set(settled.value.endpoint.id, {
+          anchorPath: settled.value.anchor.path,
+          results: settled.value.results,
+        });
+      } else if (fallback) {
+        failures.push(failure(fallback.endpoint, "related", settled.reason));
+      }
+    });
+
+    return searches.map((search) => {
+      const related = relatedByVault.get(search.endpoint.id);
+      if (!related) return search;
+      return {
+        endpoint: search.endpoint,
+        results: mergeRelatedCandidates(search.results, related.results, related.anchorPath),
+      };
+    });
+  }
+}
+
+function mergeRelatedCandidates(
+  direct: SearchResult[],
+  related: SearchResult[],
+  anchorPath: string,
+): SearchResult[] {
+  const normalizedAnchor = normalizeVaultRelativePath(anchorPath);
+  const relatedCandidates = related
+    .filter((candidate) => normalizeVaultRelativePath(candidate.path) !== normalizedAnchor)
+    .slice(0, RELATED_RESULTS_PER_ANCHOR)
+    .map((candidate) => ({
+      ...candidate,
+      retrievalKind: "related" as const,
+      relatedFromPath: normalizedAnchor,
+    }));
+  const interleaved: SearchResult[] = [];
+  const seen = new Set<string>();
+  const add = (candidate: SearchResult | undefined): void => {
+    if (!candidate) return;
+    const path = normalizeVaultRelativePath(candidate.path);
+    if (seen.has(path)) return;
+    seen.add(path);
+    interleaved.push({ ...candidate, path, rank: interleaved.length + 1 });
+  };
+
+  add(direct[0]);
+  for (let index = 0; index < Math.max(direct.length - 1, relatedCandidates.length); index += 1) {
+    add(relatedCandidates[index]);
+    add(direct[index + 1]);
+  }
+  return interleaved;
 }
 
 export function selectEndpoints(
@@ -150,7 +237,7 @@ export function selectEndpoints(
 
 function failure(
   endpoint: OhsEndpointConfig,
-  stage: "search" | "read",
+  stage: RetrievalFailure["stage"],
   reason: unknown,
 ): RetrievalFailure {
   return {
@@ -164,7 +251,7 @@ function failure(
 
 function withEndpointTimeout<T>(
   endpoint: OhsEndpointConfig,
-  stage: "search" | "read",
+  stage: RetrievalFailure["stage"],
   outerSignal: AbortSignal | undefined,
   operation: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {

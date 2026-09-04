@@ -1,9 +1,10 @@
 import type { SearchResult } from "./domain";
-import { McpHttpClient } from "./mcp-http-client";
+import { McpHttpClient, type McpTool, type McpToolResult } from "./mcp-http-client";
 
 type JsonRecord = Record<string, unknown>;
 
 export const OHS_RETRY_DELAYS_MS = [500, 1_500, 3_500, 6_000] as const;
+export const OHS_CAPABILITY_CACHE_TTL_MS = 5 * 60_000;
 
 export interface OhsReadResult {
   path: string;
@@ -11,6 +12,15 @@ export interface OhsReadResult {
   content: string;
   found: boolean;
 }
+
+interface McpClientLike {
+  initialize(signal?: AbortSignal): Promise<void>;
+  listTools(signal?: AbortSignal): Promise<McpTool[]>;
+  callTool(name: string, args: JsonRecord, signal?: AbortSignal): Promise<McpToolResult>;
+  close(signal?: AbortSignal): Promise<void>;
+}
+
+type McpClientFactory = (endpoint: URL, clientInfo: { name: string; version: string }) => McpClientLike;
 
 export interface OhsGateway {
   search(
@@ -21,10 +31,20 @@ export interface OhsGateway {
     frontmatter: string[],
     signal?: AbortSignal,
   ): Promise<SearchResult[]>;
+  related(endpoint: string, path: string, frontmatter: string[], signal?: AbortSignal): Promise<SearchResult[]>;
   read(endpoint: string, paths: string[], signal?: AbortSignal): Promise<OhsReadResult[]>;
 }
 
 export class OhsMcpClient implements OhsGateway {
+  private readonly capabilityCache = new Map<string, { expiresAt: number; tools: McpTool[] }>();
+
+  constructor(
+    private readonly createClient: McpClientFactory = (endpoint, clientInfo) => (
+      new McpHttpClient(endpoint, clientInfo)
+    ),
+    private readonly now: () => number = () => Date.now(),
+  ) {}
+
   async search(
     endpoint: string,
     queries: string[],
@@ -70,19 +90,26 @@ export class OhsMcpClient implements OhsGateway {
         signal,
       );
     }
-    const results = asRecordArray(asRecord(payload)?.results);
-    return results.flatMap((value, index) => {
-      const path = asString(value.path);
-      if (!path) return [];
-      return [{
-        path,
-        title: asString(value.title) || path.replace(/\.md$/i, "").split("/").pop() || path,
-        snippet: asString(value.snippet),
-        rank: asPositiveInteger(value.rank) ?? index + 1,
-        score: asNumber(value.score),
-        tags: asStringArray(value.tags),
-      }];
-    });
+    return parseSearchResults(payload);
+  }
+
+  async related(
+    endpoint: string,
+    path: string,
+    frontmatter: string[],
+    signal?: AbortSignal,
+  ): Promise<SearchResult[]> {
+    const payload = await withTransientOhsRetries(
+      () => this.callToolOnce(
+        endpoint,
+        "search",
+        buildOhsRelatedArguments(path, frontmatter),
+        signal,
+        ["path", "related", "depth"],
+      ),
+      signal,
+    );
+    return parseSearchResults(payload);
   }
 
   async read(endpoint: string, paths: string[], signal?: AbortSignal): Promise<OhsReadResult[]> {
@@ -107,19 +134,38 @@ export class OhsMcpClient implements OhsGateway {
     requestedName: "search" | "read",
     args: JsonRecord,
     signal?: AbortSignal,
+    requiredSearchProperties: string[] = [],
   ): Promise<unknown> {
     const url = validateMcpEndpoint(endpoint);
-    const client = new McpHttpClient(url, { name: "obsidian-hybrid-chat", version: "0.1.4" });
+    const client = this.createClient(url, { name: "obsidian-hybrid-chat", version: "0.1.4" });
     try {
       await client.initialize(signal);
-      const tools = await client.listTools(signal);
-      const tool = tools.find(({ name }) => name === requestedName)
-        ?? tools.find(({ name }) => name.endsWith(`_${requestedName}`));
+      let tool = await this.resolveTool(client, url, requestedName, signal);
       if (!tool) throw new Error(`OHS endpoint does not expose ${requestedName}`);
-      const callArguments = requestedName === "search"
-        ? adaptSearchArgumentsForTool(args, tool.inputSchema)
-        : args;
-      const result = await client.callTool(tool.name, callArguments, signal);
+      assertSearchProperties(tool, requiredSearchProperties);
+      const call = (resolvedTool: McpTool): Promise<McpToolResult> => client.callTool(
+        resolvedTool.name,
+        requestedName === "search" ? adaptSearchArgumentsForTool(args, resolvedTool.inputSchema) : args,
+        signal,
+      );
+      let result: McpToolResult;
+      try {
+        result = await call(tool);
+      } catch (error) {
+        if (!isUnknownToolError(error)) throw error;
+        this.capabilityCache.delete(url.toString());
+        tool = await this.resolveTool(client, url, requestedName, signal);
+        if (!tool) throw new Error(`OHS endpoint does not expose ${requestedName}`);
+        assertSearchProperties(tool, requiredSearchProperties);
+        result = await call(tool);
+      }
+      if (result.isError && isUnknownToolResult(result)) {
+        this.capabilityCache.delete(url.toString());
+        tool = await this.resolveTool(client, url, requestedName, signal);
+        if (!tool) throw new Error(`OHS endpoint does not expose ${requestedName}`);
+        assertSearchProperties(tool, requiredSearchProperties);
+        result = await call(tool);
+      }
       if (result.isError) throw new Error(extractText(result.content) || `${requestedName} failed`);
       if (result.structuredContent) return result.structuredContent;
       const text = extractText(result.content);
@@ -132,6 +178,27 @@ export class OhsMcpClient implements OhsGateway {
     } finally {
       await client.close().catch(() => undefined);
     }
+  }
+
+  private async resolveTool(
+    client: McpClientLike,
+    endpoint: URL,
+    requestedName: "search" | "read",
+    signal?: AbortSignal,
+  ): Promise<McpTool | undefined> {
+    const cacheKey = endpoint.toString();
+    const cached = this.capabilityCache.get(cacheKey);
+    const tools = cached && cached.expiresAt > this.now()
+      ? cached.tools
+      : await client.listTools(signal).then((discovered) => {
+        this.capabilityCache.set(cacheKey, {
+          expiresAt: this.now() + OHS_CAPABILITY_CACHE_TTL_MS,
+          tools: discovered,
+        });
+        return discovered;
+      });
+    return tools.find(({ name }) => name === requestedName)
+      ?? tools.find(({ name }) => name.endsWith(`_${requestedName}`));
   }
 }
 
@@ -156,13 +223,30 @@ export function buildOhsSearchArguments(
   };
 }
 
+export function buildOhsRelatedArguments(path: string, frontmatter: string[] = []): JsonRecord {
+  return {
+    path,
+    related: true,
+    depth: 1,
+    direction: "both",
+    link_type: "all",
+    snippet_length: 600,
+    ...(frontmatter.length > 0 ? { frontmatter } : {}),
+  };
+}
+
 /** Preserve compatibility with older OHS servers whose search schema predates queries[]. */
 export function adaptSearchArgumentsForTool(args: JsonRecord, inputSchema: unknown): JsonRecord {
-  if (!Array.isArray(args.queries)) return args;
   const properties = asRecord(asRecord(inputSchema)?.properties);
-  if (!properties || Object.prototype.hasOwnProperty.call(properties, "queries")) return args;
   const compatible = { ...args };
-  delete compatible.queries;
+  if (Array.isArray(args.queries) && properties && !Object.prototype.hasOwnProperty.call(properties, "queries")) {
+    delete compatible.queries;
+  }
+  if (args.related === true && properties) {
+    for (const optionalName of ["direction", "link_type", "frontmatter", "snippet_length"]) {
+      if (!Object.prototype.hasOwnProperty.call(properties, optionalName)) delete compatible[optionalName];
+    }
+  }
   return compatible;
 }
 
@@ -205,6 +289,39 @@ function extractText(content: unknown): string {
     ))
     .map((item) => item.text)
     .join("\n");
+}
+
+function isUnknownToolResult(result: McpToolResult): boolean {
+  return /unknown tool|tool not found|does not exist/i.test(extractText(result.content));
+}
+
+function isUnknownToolError(error: unknown): boolean {
+  return /unknown tool|tool not found|does not exist/i.test(error instanceof Error ? error.message : String(error));
+}
+
+function assertSearchProperties(tool: McpTool, requiredProperties: string[]): void {
+  if (requiredProperties.length === 0) return;
+  const properties = asRecord(asRecord(tool.inputSchema)?.properties);
+  const missing = requiredProperties.filter((name) => !properties
+    || !Object.prototype.hasOwnProperty.call(properties, name));
+  if (missing.length > 0) {
+    throw new Error(`OHS endpoint does not advertise related-note traversal (${missing.join(", ")} missing)`);
+  }
+}
+
+function parseSearchResults(payload: unknown): SearchResult[] {
+  return asRecordArray(asRecord(payload)?.results).flatMap((value, index) => {
+    const path = asString(value.path);
+    if (!path) return [];
+    return [{
+      path,
+      title: asString(value.title) || path.replace(/\.md$/i, "").split("/").pop() || path,
+      snippet: asString(value.snippet),
+      rank: asPositiveInteger(value.rank) ?? index + 1,
+      score: asNumber(value.score),
+      tags: asStringArray(value.tags),
+    }];
+  });
 }
 
 function asRecord(value: unknown): JsonRecord | null {

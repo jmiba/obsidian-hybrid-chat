@@ -20,6 +20,8 @@ export interface RetrievalHistoryOptions {
 
 const FOLLOW_UP_REFERENCE = /(?:^(?:and|also|then|next|what about|how about|und|auch|dann|danach|was ist mit|wie sieht es mit)\b|\b(?:it|its|they|them|their|he|him|his|she|her|hers|this|that|these|those|former|latter|there|er|sie|ihm|ihn|ihr|ihre|dies|diese|dieser|dieses|das|davon|dazu|darüber|dort)\b)/iu;
 
+const RELATED_NOTE_INTENT = /\b(?:backlinks?|cit(?:e[sd]?|ing|ations?)|connect(?:ed|ion|ions|s)?|depend(?:s|ed|ency|encies)?|influenc(?:e[sd]?|ing)|link(?:s|ed)?|multi[- ]hop|references?|relate[ds]?|relationships?|abhängig(?:keit|keiten)?|beziehung(?:en)?|mehrstufig|referenz(?:en|iert)?|verknüpf(?:t|ung|ungen)?|verweist|zusammenhang|zitate?|zitiert)\b/iu;
+
 const QUERY_STOP_WORDS = new Set([
   "a", "about", "an", "and", "are", "as", "at", "be", "been", "by", "can", "could", "did", "do", "does",
   "for", "from", "had", "has", "have", "he", "her", "him", "his", "how", "i", "in", "is", "it", "its", "me",
@@ -139,6 +141,11 @@ export function buildRetrievalQueries(
     addVariant(buildLexicalVariant(lexicalInput));
   }
   return variants.slice(0, maxVariants);
+}
+
+/** Restrict graph expansion to questions that explicitly ask about relationships. */
+export function shouldTraverseRelatedNotes(question: string): boolean {
+  return RELATED_NOTE_INTENT.test(normalizeQuestion(question));
 }
 
 function recentQuestions(

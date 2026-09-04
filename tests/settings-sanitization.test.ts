@@ -32,6 +32,7 @@ describe("settings sanitization", () => {
     expect(persisted.customSystemPrompt).toBe("Answer in German.");
     expect(persisted.enableOhsReranking).toBe(true);
     expect(persisted.queryExpansionMode).toBe("follow-ups");
+    expect(persisted.enableRelatedNoteTraversal).toBe(false);
     expect(persisted.ohsEndpoints[0]?.requestTimeoutMs).toBe(60_000);
   });
 
@@ -39,6 +40,11 @@ describe("settings sanitization", () => {
     expect(loadSettings({}, "Vault").queryExpansionMode).toBe("follow-ups");
     expect(loadSettings({ queryExpansionMode: "always" }, "Vault").queryExpansionMode).toBe("always");
     expect(loadSettings({ queryExpansionMode: "invalid" }, "Vault").queryExpansionMode).toBe("follow-ups");
+  });
+
+  it("keeps related-note traversal opt-in", () => {
+    expect(loadSettings({}, "Vault").enableRelatedNoteTraversal).toBe(false);
+    expect(loadSettings({ enableRelatedNoteTraversal: true }, "Vault").enableRelatedNoteTraversal).toBe(true);
   });
 
   it("migrates endpoints without a timeout to the bounded default", () => {

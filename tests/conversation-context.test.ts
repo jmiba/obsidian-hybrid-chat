@@ -4,6 +4,7 @@ import {
   buildConversationSearchQuery,
   buildRecentChatMessages,
   buildRetrievalQueries,
+  shouldTraverseRelatedNotes,
 } from "../src/conversation-context";
 
 const message = (id: string, role: ChatMessage["role"], content: string): ChatMessage => ({
@@ -126,5 +127,12 @@ describe("conversation-aware retrieval", () => {
 
   it("preserves an empty query for filter-only retrieval", () => {
     expect(buildRetrievalQueries("", ["Earlier question"])).toEqual([""]);
+  });
+
+  it("limits related-note traversal to explicit relationship intent", () => {
+    expect(shouldTraverseRelatedNotes("How does Project A relate to Project B?")).toBe(true);
+    expect(shouldTraverseRelatedNotes("Welche Notizen stehen damit im Zusammenhang?")).toBe(true);
+    expect(shouldTraverseRelatedNotes("Summarize Project A")).toBe(false);
+    expect(shouldTraverseRelatedNotes("What was published in 2024?")).toBe(false);
   });
 });

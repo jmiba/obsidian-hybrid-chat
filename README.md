@@ -7,10 +7,10 @@ It does **not** create a vector index, read OHS SQLite databases, or duplicate i
 ## Architecture
 
 1. The sidebar selects the current vault, explicitly selected vaults, or every enabled vault, and restores the last-used scope when the view reopens.
-2. `OhsMcpClient` queries the configured stateless Streamable HTTP MCP endpoints concurrently through Obsidian's desktop HTTP API, avoiding browser CORS requirements for loopback services.
+2. `OhsMcpClient` queries the configured stateless Streamable HTTP MCP endpoints concurrently through Obsidian's desktop HTTP API, avoiding browser CORS requirements for loopback services. Discovered tool names and input schemas are cached per endpoint for five minutes, avoiding repeated `tools/list` calls while preserving a short compatibility refresh window.
 3. Hybrid Chat sends the original question to OHS. With the default **Follow-ups only** query-expansion mode, referential follow-ups also receive one bounded contextual variant through OHS `queries[]`. The optional **Always** mode adds a compact lexical recall variant. OHS performs per-vault multi-query RRF and then applies its native cross-encoder reranker once; endpoints with an older advertised schema receive only the original query.
 4. Explicit YAML directives map to OHS frontmatter filters: `@property(status=todo)` includes an exact value, `@property(status!=done)` excludes one, and `@property(publication_date)` requests a property without filtering.
-5. Conversation history is added to retrieval only when the current question appears referential, allowing references such as “she”, “that project”, or “the second one” to retain their subject without pulling self-contained questions toward stale topics. Assistant answers are not sent to OHS. `FederatedRetriever` merges the resulting per-vault ranks without comparing raw cross-vault scores, and a diversity pass gives each healthy vault a chance to contribute.
+5. Conversation history is added to retrieval only when the current question appears referential, allowing references such as “she”, “that project”, or “the second one” to retain their subject without pulling self-contained questions toward stale topics. Assistant answers are not sent to OHS. `FederatedRetriever` merges the resulting per-vault ranks without comparing raw cross-vault scores, and a diversity pass gives each healthy vault a chance to contribute. When the opt-in related-note setting is enabled and the question explicitly asks about relationships, the best direct result from each healthy vault is expanded through one vault-local hop of links and backlinks; at most two linked candidates per anchor are promoted.
 6. Only the globally selected note paths are sent to OHS `read`. If a selected path is missing or a vault read fails, the retriever moves down the ranked candidates until the requested number of readable notes is filled or candidates are exhausted. Unavailable endpoints remain visible partial failures.
 7. `ContextPacker` applies per-note and total character limits and centers long-note excerpts around the matching OHS snippet instead of always taking the beginning. Each source is namespaced as `vault_id::vault/relative/path.md`. Only explicitly requested YAML properties from the currently open vault are appended; current OHS `read` responses do not expose arbitrary cross-vault frontmatter.
 8. A fresh local/UTC timestamp and optional custom instructions are added to the protected grounding prompt. No datetime MCP call or model tool selection is required.
@@ -34,12 +34,13 @@ The source is split into the OHS client, federated retriever, rank fusion, conte
 In Obsidian settings:
 
 - Register one OHS Streamable HTTP MCP endpoint per vault, including a stable ID, display name, exact Obsidian vault name, and enabled/default-selection state.
-- Set a per-endpoint request timeout. The default is 60 seconds for each OHS `search` or `read`; a client timeout stops Hybrid Chat from waiting but cannot cancel synchronous database work already running inside OHS.
+- Set a per-endpoint request timeout. The default is 60 seconds for each OHS direct search, related-note traversal, or read; a client timeout stops Hybrid Chat from waiting but cannot cancel synchronous database work already running inside OHS.
 - Configure one or more OpenAI-compatible profiles, choose an active profile, enter its model, and select or create an API-key secret.
 - Optionally customize language, tone, role, or answer structure. Grounding/citation rules remain enforced separately.
 - Keep the local current-date/time injection enabled when relative dates such as “today” or “last week” matter.
 - OHS reranking is enabled by default. Disable it when lower latency matters more than precision. The reranker model is configured on each OHS server, not in this plugin.
 - Keep query expansion at **Follow-ups only** for the best default precision: ordinary questions are sent unchanged, while referential follow-ups receive bounded conversational context. Use **Off** for strict single-query retrieval or **Always** to opt into the broader lexical variant.
+- Optionally enable **one-hop related notes** for relationship-oriented questions. It is disabled by default and never runs for ordinary factual searches.
 - Use explicit YAML directives in chat prompts: `@property(field=value)` filters by an exact value, `@property(field!=value)` excludes it, and `@property(field)` adds that current-vault value to answer context without filtering.
 - Adjust per-vault search, global note-read, and context limits.
 

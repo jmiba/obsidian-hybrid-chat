@@ -27,6 +27,13 @@ class FakeGateway implements OhsGateway {
     ]);
   }
 
+  related(endpoint: string, path: string, frontmatter: string[]): Promise<SearchResult[]> {
+    void endpoint;
+    void path;
+    void frontmatter;
+    return Promise.resolve([]);
+  }
+
   read(endpoint: string, paths: string[]): Promise<OhsReadResult[]> {
     this.reads.push({ endpoint, paths });
     return Promise.resolve(paths.map((path) => ({ path, title: path, content: `content:${path}`, found: true })));
@@ -46,7 +53,7 @@ describe("endpoint partial failure", () => {
       endpoints,
       { mode: "all", vaultIds: [] },
       "A",
-      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, frontmatterFilters: [] },
+      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, enableRelatedTraversal: false, frontmatterFilters: [] },
     );
     expect(result.failures).toEqual([expect.objectContaining({ vaultId: "offline", stage: "search" })]);
     expect(result.allSearchesFailed).toBe(false);
@@ -62,7 +69,7 @@ describe("endpoint partial failure", () => {
       [endpoints[1]!],
       { mode: "all", vaultIds: [] },
       "B",
-      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, frontmatterFilters: [] },
+      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, enableRelatedTraversal: false, frontmatterFilters: [] },
     );
     expect(result.sources).toEqual([]);
     expect(result.allSearchesFailed).toBe(true);
@@ -94,7 +101,7 @@ describe("endpoint partial failure", () => {
       [{ ...endpoints[0]!, requestTimeoutMs: 5 }],
       { mode: "all", vaultIds: [] },
       "A",
-      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, frontmatterFilters: [] },
+      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, enableRelatedTraversal: false, frontmatterFilters: [] },
     );
     expect(result.allSearchesFailed).toBe(true);
     expect(result.failures[0]).toMatchObject({
@@ -118,7 +125,7 @@ describe("endpoint partial failure", () => {
       [endpoints[0]!],
       { mode: "all", vaultIds: [] },
       "A",
-      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, frontmatterFilters: [] },
+      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, enableRelatedTraversal: false, frontmatterFilters: [] },
       controller.signal,
     )).rejects.toMatchObject({ name: "AbortError" });
   });
@@ -142,12 +149,126 @@ describe("endpoint partial failure", () => {
       [endpoints[0]!],
       { mode: "all", vaultIds: [] },
       "A",
-      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, frontmatterFilters: [] },
+      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: true, enableRelatedTraversal: false, frontmatterFilters: [] },
     );
     expect(result.sources.map((source) => source.sourceId)).toEqual(["healthy::two.md"]);
     expect(gateway.reads).toEqual([
       { endpoint: "http://healthy/mcp", paths: ["one.md"] },
       { endpoint: "http://healthy/mcp", paths: ["two.md"] },
     ]);
+  });
+
+  it("expands one anchor per vault and promotes only bounded linked candidates", async () => {
+    class RelatedGateway extends FakeGateway {
+      readonly relatedCalls: Array<{ endpoint: string; path: string; frontmatter: string[] }> = [];
+
+      override related(endpoint: string, path: string, frontmatter: string[]): Promise<SearchResult[]> {
+        this.relatedCalls.push({ endpoint, path, frontmatter });
+        return Promise.resolve([
+          { path: "one.md", title: "One", snippet: "anchor", rank: 1 },
+          { path: "linked-a.md", title: "Linked A", snippet: "linked", rank: 2 },
+          { path: "linked-b.md", title: "Linked B", snippet: "linked", rank: 3 },
+          { path: "linked-c.md", title: "Linked C", snippet: "linked", rank: 4 },
+        ]);
+      }
+    }
+
+    const gateway = new RelatedGateway();
+    const result = await new FederatedRetriever(gateway).retrieve(
+      ["How is One connected to the project?"],
+      [endpoints[0]!],
+      { mode: "all", vaultIds: [] },
+      "A",
+      {
+        searchLimitPerVault: 8,
+        maxNotes: 3,
+        enableReranking: true,
+        enableRelatedTraversal: true,
+        frontmatterFilters: ["status:active"],
+      },
+    );
+
+    expect(gateway.relatedCalls).toEqual([{
+      endpoint: "http://healthy/mcp",
+      path: "one.md",
+      frontmatter: ["status:active"],
+    }]);
+    expect(result.sources.map((source) => [source.sourceId, source.retrievalKind])).toEqual([
+      ["healthy::one.md", "direct"],
+      ["healthy::linked-a.md", "related"],
+      ["healthy::two.md", "direct"],
+    ]);
+  });
+
+  it("keeps related traversal on each anchor's originating vault endpoint", async () => {
+    class MultiVaultRelatedGateway extends FakeGateway {
+      readonly relatedCalls: Array<{ endpoint: string; path: string }> = [];
+
+      override related(endpoint: string, path: string): Promise<SearchResult[]> {
+        this.relatedCalls.push({ endpoint, path });
+        const suffix = endpoint.includes("second") ? "second" : "first";
+        return Promise.resolve([{
+          path: `${suffix}-linked.md`,
+          title: `${suffix} linked`,
+          snippet: "linked",
+          rank: 1,
+        }]);
+      }
+    }
+
+    const gateway = new MultiVaultRelatedGateway();
+    const secondEndpoint: OhsEndpointConfig = {
+      ...endpoints[0]!,
+      id: "second",
+      displayName: "Second",
+      endpoint: "http://second/mcp",
+      obsidianVaultName: "B",
+    };
+    const result = await new FederatedRetriever(gateway).retrieve(
+      ["What links these projects?"],
+      [endpoints[0]!, secondEndpoint],
+      { mode: "all", vaultIds: [] },
+      "A",
+      {
+        searchLimitPerVault: 8,
+        maxNotes: 4,
+        enableReranking: false,
+        enableRelatedTraversal: true,
+        frontmatterFilters: [],
+      },
+    );
+
+    expect(gateway.relatedCalls).toEqual([
+      { endpoint: "http://healthy/mcp", path: "one.md" },
+      { endpoint: "http://second/mcp", path: "one.md" },
+    ]);
+    expect(result.sources.filter((source) => source.retrievalKind === "related").map((source) => source.sourceId))
+      .toEqual(["healthy::first-linked.md", "second::second-linked.md"]);
+  });
+
+  it("keeps direct results when optional related traversal fails", async () => {
+    class FailedRelatedGateway extends FakeGateway {
+      override related(): Promise<SearchResult[]> {
+        return Promise.reject(new Error("related traversal unavailable"));
+      }
+    }
+
+    const result = await new FederatedRetriever(new FailedRelatedGateway()).retrieve(
+      ["What is linked to One?"],
+      [endpoints[0]!],
+      { mode: "all", vaultIds: [] },
+      "A",
+      {
+        searchLimitPerVault: 8,
+        maxNotes: 1,
+        enableReranking: false,
+        enableRelatedTraversal: true,
+        frontmatterFilters: [],
+      },
+    );
+
+    expect(result.sources.map((source) => source.sourceId)).toEqual(["healthy::one.md"]);
+    expect(result.failures).toEqual([expect.objectContaining({ stage: "related", vaultId: "healthy" })]);
+    expect(result.allSearchesFailed).toBe(false);
   });
 });

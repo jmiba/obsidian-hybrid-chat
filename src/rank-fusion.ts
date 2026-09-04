@@ -68,6 +68,8 @@ export function fuseRankedResults(
     rank: candidate.rank,
     score: candidate.score,
     tags: candidate.tags,
+    retrievalKind: candidate.retrievalKind,
+    relatedFromPath: candidate.relatedFromPath,
     vaultId: candidate.vaultId,
     vaultDisplayName: candidate.vaultDisplayName,
     obsidianVaultName: candidate.obsidianVaultName,
