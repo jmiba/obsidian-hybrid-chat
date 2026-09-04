@@ -109,7 +109,7 @@ export class OhsMcpClient implements OhsGateway {
     signal?: AbortSignal,
   ): Promise<unknown> {
     const url = validateMcpEndpoint(endpoint);
-    const client = new McpHttpClient(url, { name: "obsidian-hybrid-chat", version: "0.1.3" });
+    const client = new McpHttpClient(url, { name: "obsidian-hybrid-chat", version: "0.1.4" });
     try {
       await client.initialize(signal);
       const tools = await client.listTools(signal);

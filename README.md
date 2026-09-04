@@ -2,7 +2,7 @@
 
 Hybrid Chat is a desktop-only Obsidian 1.13+ plugin that provides federated, provider-neutral RAG chat over existing [Obsidian Hybrid Search (OHS)](https://github.com/flowing-abyss/obsidian-hybrid-search) services.
 
-It does **not** create a vector index, read OHS SQLite databases, or duplicate indexing. Retrieval is read-only: the plugin calls only the OHS MCP `search` and `read` tools. Chat export copies Markdown to the clipboard and does not create or modify vault notes.
+It does **not** create a vector index, read OHS SQLite databases, or duplicate indexing. Retrieval is read-only: the plugin calls only the OHS MCP `search` and `read` tools. The user-invoked copy actions write Markdown to the system clipboard; the plugin never reads clipboard contents and does not create or modify vault notes.
 
 ## Architecture
 
@@ -69,4 +69,4 @@ For manual testing, copy `manifest.json`, `main.js`, and `styles.css` into `<vau
 - `styles.css`
 - `checksums.sha256`
 
-Pushing a tag that exactly matches `manifest.json` (for example, `0.1.3`) runs the release workflow against the tagged source, generates build-provenance attestations from `checksums.sha256`, and creates a draft GitHub release containing only the three supported Obsidian assets: `main.js`, `manifest.json`, and `styles.css`. Review its generated notes before publishing.
+Pushing a tag that exactly matches `manifest.json` (for example, `0.1.4`) runs the release workflow against the tagged source, generates build-provenance attestations from `checksums.sha256`, and creates a draft GitHub release containing only the three supported Obsidian assets: `main.js`, `manifest.json`, and `styles.css`. Review its generated notes before publishing.

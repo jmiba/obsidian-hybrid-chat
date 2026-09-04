@@ -36,7 +36,7 @@ describe("minimal MCP Streamable HTTP client", () => {
 
     const client = new McpHttpClient(
       new URL("http://127.0.0.1:3939/mcp"),
-      { name: "hybrid-chat", version: "0.1.3" },
+      { name: "hybrid-chat", version: "0.1.4" },
     );
     await client.initialize();
     await expect(client.listTools()).resolves.toEqual([
