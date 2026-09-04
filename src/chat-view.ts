@@ -14,7 +14,12 @@ import type { ChatMessage, ChatSession, RetrievedSource, VaultSelection } from "
 import { buildGroundedSystemPrompt, packContext } from "./context-packer";
 import { buildObsidianOpenUri, openCitation } from "./citation-mapper";
 import { appendRequestedProperties, parsePropertyDirectives } from "./property-directives";
-import { chatWorkLabel, shouldShowSources, type ChatWorkPhase } from "./chat-progress";
+import {
+  chatWorkLabel,
+  shouldExpandSources,
+  shouldShowSources,
+  type ChatWorkPhase,
+} from "./chat-progress";
 import { messageClipboardText, removeMessageById } from "./chat-message-actions";
 import { buildRecentChatMessages, buildRetrievalQueries } from "./conversation-context";
 
@@ -335,7 +340,7 @@ export class HybridChatView extends ItemView {
 
   private renderSources(wrapper: HTMLElement, sources: RetrievedSource[], retrievalUnavailable: boolean): void {
     const details = wrapper.createEl("details", { cls: "ohc-sources" });
-    details.open = true;
+    details.open = shouldExpandSources(sources.length, retrievalUnavailable);
     details.createEl("summary", { text: `Sources (${sources.length})` });
     if (sources.length === 0) {
       details.createDiv({

@@ -7,3 +7,7 @@ export function chatWorkLabel(phase: ChatWorkPhase): string {
 export function shouldShowSources(isWorking: boolean, sourcesRevealed: boolean): boolean {
   return !isWorking || sourcesRevealed;
 }
+
+export function shouldExpandSources(sourceCount: number, retrievalUnavailable: boolean): boolean {
+  return retrievalUnavailable || sourceCount === 0;
+}
