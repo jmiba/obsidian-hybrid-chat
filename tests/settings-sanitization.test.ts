@@ -55,6 +55,20 @@ describe("settings sanitization", () => {
     expect(loaded.ohsEndpoints[0]?.requestTimeoutMs).toBe(60_000);
   });
 
+  it("round-trips the last vault scope and selected endpoint IDs", () => {
+    const settings = defaultSettings("Vault");
+    settings.defaultSelection = { mode: "specific", vaultIds: ["research", "mail"] };
+
+    const persisted = sanitizeSettingsForPersistence(settings);
+    settings.defaultSelection.vaultIds.push("later-change");
+
+    expect(persisted.defaultSelection).toEqual({
+      mode: "specific",
+      vaultIds: ["research", "mail"],
+    });
+    expect(loadSettings(persisted, "Vault").defaultSelection).toEqual(persisted.defaultSelection);
+  });
+
   it("creates a persistence snapshot without detaching live streaming references", () => {
     const settings = defaultSettings("Vault");
     const session = settings.sessions[0]!;

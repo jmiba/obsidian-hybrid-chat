@@ -6,7 +6,7 @@ It does **not** create a vector index, read OHS SQLite databases, or duplicate i
 
 ## Architecture
 
-1. The sidebar selects the current vault, explicitly selected vaults, or every enabled vault.
+1. The sidebar selects the current vault, explicitly selected vaults, or every enabled vault, and restores the last-used scope when the view reopens.
 2. `OhsMcpClient` queries the configured stateless Streamable HTTP MCP endpoints concurrently through Obsidian's desktop HTTP API, avoiding browser CORS requirements for loopback services.
 3. Hybrid Chat sends the original question to OHS. With the default **Follow-ups only** query-expansion mode, referential follow-ups also receive one bounded contextual variant through OHS `queries[]`. The optional **Always** mode adds a compact lexical recall variant. OHS performs per-vault multi-query RRF and then applies its native cross-encoder reranker once; endpoints with an older advertised schema receive only the original query.
 4. Explicit YAML directives map to OHS frontmatter filters: `@property(status=todo)` includes an exact value, `@property(status!=done)` excludes one, and `@property(publication_date)` requests a property without filtering.

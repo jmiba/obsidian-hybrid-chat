@@ -38,9 +38,7 @@ export class HybridChatView extends ItemView {
     this.plugin = plugin;
     this.selection = {
       mode: plugin.settings.defaultSelection.mode,
-      vaultIds: plugin.settings.defaultSelection.vaultIds.length
-        ? [...plugin.settings.defaultSelection.vaultIds]
-        : plugin.settings.ohsEndpoints.filter((item) => item.selectedByDefault).map((item) => item.id),
+      vaultIds: [...plugin.settings.defaultSelection.vaultIds],
     };
   }
 
@@ -105,6 +103,12 @@ export class HybridChatView extends ItemView {
     select.value = this.selection.mode;
     select.addEventListener("change", () => {
       this.selection.mode = select.value as VaultSelection["mode"];
+      if (this.selection.mode === "specific" && this.selection.vaultIds.length === 0) {
+        this.selection.vaultIds = this.plugin.settings.ohsEndpoints
+          .filter((item) => item.enabled && item.selectedByDefault)
+          .map((item) => item.id);
+      }
+      this.persistVaultSelection();
       this.renderScopeControls();
     });
     if (this.selection.mode === "specific") {
@@ -117,10 +121,19 @@ export class HybridChatView extends ItemView {
           const ids = new Set(this.selection.vaultIds);
           if (checkbox.checked) ids.add(endpoint.id); else ids.delete(endpoint.id);
           this.selection.vaultIds = [...ids];
+          this.persistVaultSelection();
         });
         label.createSpan({ text: endpoint.displayName });
       }
     }
+  }
+
+  private persistVaultSelection(): void {
+    this.plugin.settings.defaultSelection = {
+      mode: this.selection.mode,
+      vaultIds: [...this.selection.vaultIds],
+    };
+    void this.plugin.saveSettings();
   }
 
   private async send(): Promise<void> {
