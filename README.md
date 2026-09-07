@@ -19,6 +19,11 @@ It does **not** create a vector index, read OHS SQLite databases, or duplicate i
 
 The source is split into the OHS client, federated retriever, rank fusion, context packer, OpenAI-compatible client, citation mapper, settings, and session/UI layers.
 
+Chat window in the right-hand sidebar, source opens in the main editor:
+
+<img width="1225" height="900" alt="Chat window in the right-hand sidebar, source opens in the main editor" src="https://github.com/user-attachments/assets/01ca3e1c-3001-4728-930c-d9409694256e" />
+
+
 ## Privacy boundaries
 
 - OHS endpoints may be local or remote. Every selected endpoint receives only the current, directive-free question; earlier user questions and assistant answers are not included in OHS queries.
