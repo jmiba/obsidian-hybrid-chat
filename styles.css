@@ -165,6 +165,7 @@
 .ohc-composer {
   border-top: 1px solid var(--background-modifier-border);
   border-bottom: 0;
+  margin-bottom: 26px;
 }
 
 .ohc-input {
