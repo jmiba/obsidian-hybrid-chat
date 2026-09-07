@@ -48,6 +48,14 @@ In Obsidian settings:
 - Use explicit YAML directives in chat prompts: `@property(field=value)` filters by an exact value, `@property(field!=value)` excludes it, and `@property(field)` adds that current-vault value to answer context without filtering.
 - Adjust per-vault search, global note-read, and context limits.
 
+### Improving retrieval
+
+Write the current question as a descriptive phrase or sentence that includes distinctive names, topics, dates, document types, and relationships. Hybrid Chat sends that question directly to OHS semantic/hybrid search; it does not reduce it to individual keywords. Because earlier turns are not part of retrieval, restate the subject in follow-up questions. When possible, search only the likely vault, use `@property(...)` filters to narrow the corpus, and enable one-hop related notes for questions explicitly about links or relationships.
+
+For a balanced increase in recall, start with **24 results per vault**, **10 notes read**, **32,000 total context characters**, and **4,000–5,000 characters per note**, with OHS reranking enabled. For unusually difficult, high-recall searches, try **32 results per vault**, **12 notes read**, **48,000 total context characters**, and **4,000 characters per note**. The settings UI allows up to 50 results per vault and 20 notes read, but maximizing both can add latency and weakly related evidence.
+
+Raise results per vault and notes read together: extra candidates normally cannot affect the answer unless enough globally ranked notes are subsequently read. Also raise the total context budget when reading more notes, or later sources may not fit in the provider prompt. Larger values are not always better; reduce them again when answers become slower or less focused.
+
 The current public OHS contract exposes `search` and batch `read` over stateless Streamable HTTP. Tool prefixes and input schemas are discovered from each endpoint.
 
 Streamable HTTP remains the default because multiple clients can share one long-lived OHS indexer and model cache. STDIO is not currently exposed as a Hybrid Chat transport; a future local-only mode would need to own a persistent child process and make its indexing, memory, logging, and cancellation lifecycle explicit.

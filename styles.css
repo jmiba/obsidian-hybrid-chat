@@ -10,7 +10,6 @@
 .ohc-composer {
   padding: var(--size-4-2);
   border-bottom: 1px solid var(--background-modifier-border);
-  margin-bottom: 30px;
 }
 
 .ohc-title {
@@ -128,6 +127,7 @@
 
 .ohc-message-content > :first-child { margin-top: 0; }
 .ohc-message-content > :last-child { margin-bottom: 0; }
+.ohc-message-content { font-size: var(--font-ui-small); }
 
 .ohc-sources {
   margin-top: var(--size-4-3);
