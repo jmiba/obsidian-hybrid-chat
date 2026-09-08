@@ -299,17 +299,22 @@ export class HybridChatSettingTab extends PluginSettingTab {
         "Request timeout (seconds)",
         "Maximum time Hybrid Chat waits for each OHS search or read. Timing out does not cancel database work already running inside OHS.",
         (setting) => setting.addText((text) => {
-          text.setValue(String(Math.round(endpoint.requestTimeoutMs / 1000))).onChange((value) => {
-            const parsed = parseFiniteNumber(value);
-            if (parsed === null) return;
+          let draft = String(Math.round(endpoint.requestTimeoutMs / 1000));
+          text.setValue(draft).onChange((value) => { draft = value; });
+          text.inputEl.addEventListener("blur", () => {
+            const parsed = parseFiniteNumber(draft);
+            if (parsed === null) {
+              draft = String(Math.round(endpoint.requestTimeoutMs / 1000));
+              text.setValue(draft);
+              return;
+            }
             const currentSeconds = Math.round(endpoint.requestTimeoutMs / 1000);
             const nextSeconds = boundedInteger(parsed, 5, 600, currentSeconds);
+            draft = String(nextSeconds);
+            text.setValue(draft);
+            if (nextSeconds === currentSeconds) return;
             endpoint.requestTimeoutMs = nextSeconds * 1000;
-            if (value !== String(nextSeconds)) text.setValue(String(nextSeconds));
             this.persist();
-          });
-          text.inputEl.addEventListener("blur", () => {
-            text.setValue(String(Math.round(endpoint.requestTimeoutMs / 1000)));
           });
         }),
       ),
@@ -381,15 +386,22 @@ export class HybridChatSettingTab extends PluginSettingTab {
     max: number,
   ): SettingDefinition {
     return this.definition(name, description, (setting) => setting.addText((text) => {
-      text.setValue(String(this.plugin.settings[key])).onChange((value) => {
-        const parsed = parseFiniteNumber(value);
-        if (parsed === null) return;
+      let draft = String(this.plugin.settings[key]);
+      text.setValue(draft).onChange((value) => { draft = value; });
+      text.inputEl.addEventListener("blur", () => {
+        const parsed = parseFiniteNumber(draft);
+        if (parsed === null) {
+          draft = String(this.plugin.settings[key]);
+          text.setValue(draft);
+          return;
+        }
         const nextValue = boundedInteger(parsed, min, max, this.plugin.settings[key]);
+        draft = String(nextValue);
+        text.setValue(draft);
+        if (nextValue === this.plugin.settings[key]) return;
         this.plugin.settings[key] = nextValue;
-        if (value !== String(nextValue)) text.setValue(String(nextValue));
         this.persist();
       });
-      text.inputEl.addEventListener("blur", () => { text.setValue(String(this.plugin.settings[key])); });
     }));
   }
 

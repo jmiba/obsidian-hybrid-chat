@@ -86,11 +86,31 @@ describe("settings sanitization", () => {
     control.change("");
     expect(plugin.settings.maxContextChars).toBe(24_000);
     expect(plugin.saveSettings).not.toHaveBeenCalled();
+    control.blur();
+    expect(control.value()).toBe("24000");
 
     control.change("400000");
+    expect(plugin.settings.maxContextChars).toBe(24_000);
+    expect(control.value()).toBe("400000");
+    expect(plugin.saveSettings).not.toHaveBeenCalled();
+    control.blur();
     expect(plugin.settings.maxContextChars).toBe(200_000);
     expect(control.value()).toBe("200000");
     expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows below-minimum intermediate states while typing a numeric setting", () => {
+    const { tab, plugin } = settingTab();
+    const control = renderTextSetting(tab, "Retrieval", "Total context characters");
+
+    for (const value of ["2", "24", "240", "2400", "24000"]) control.change(value);
+
+    expect(control.value()).toBe("24000");
+    expect(plugin.settings.maxContextChars).toBe(24_000);
+    expect(plugin.saveSettings).not.toHaveBeenCalled();
+    control.blur();
+    expect(control.value()).toBe("24000");
+    expect(plugin.saveSettings).not.toHaveBeenCalled();
   });
 
   it("keeps a blank endpoint timeout unchanged and reflects its upper bound", () => {
@@ -100,8 +120,14 @@ describe("settings sanitization", () => {
     control.change("");
     expect(plugin.settings.ohsEndpoints[0]?.requestTimeoutMs).toBe(60_000);
     expect(plugin.saveSettings).not.toHaveBeenCalled();
+    control.blur();
+    expect(control.value()).toBe("60");
 
     control.change("900");
+    expect(plugin.settings.ohsEndpoints[0]?.requestTimeoutMs).toBe(60_000);
+    expect(control.value()).toBe("900");
+    expect(plugin.saveSettings).not.toHaveBeenCalled();
+    control.blur();
     expect(plugin.settings.ohsEndpoints[0]?.requestTimeoutMs).toBe(600_000);
     expect(control.value()).toBe("600");
     expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
