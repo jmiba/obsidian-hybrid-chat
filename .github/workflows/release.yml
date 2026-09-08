@@ -46,12 +46,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: >-
-          gh release create "$RELEASE_TAG"
-          --verify-tag
-          --title "$RELEASE_TAG"
-          --generate-notes
-          --draft
-          dist/release/main.js
-          dist/release/manifest.json
-          dist/release/styles.css
+        run: |
+          set -euo pipefail
+          expected_url="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
+          if gh release view "${RELEASE_TAG}" --json tagName >/dev/null 2>&1; then
+            echo "::error::Release ${RELEASE_TAG} already exists; refusing to create a competing release. Resolve it and re-run."
+            exit 1
+          fi
+          actual_url="$(gh release create "${RELEASE_TAG}" --verify-tag --title "${RELEASE_TAG}" --generate-notes --draft dist/release/main.js dist/release/manifest.json dist/release/styles.css | tail -n 1)"
+          if [[ "${actual_url%/}" != "${expected_url}" ]]; then
+            echo "::error::Expected ${expected_url} but got ${actual_url}; the release is not attached to tag ${RELEASE_TAG}."
+            exit 1
+          fi
+          echo "Draft release attached to tag: ${actual_url}"
