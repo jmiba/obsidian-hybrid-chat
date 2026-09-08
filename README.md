@@ -4,6 +4,24 @@ Hybrid Chat is a desktop-only Obsidian 1.13+ plugin that provides federated, pro
 
 It does **not** create a vector index, read OHS SQLite databases, or duplicate indexing. Retrieval is read-only: the plugin calls only the OHS MCP `search` and `read` tools. The user-invoked copy actions write Markdown to the system clipboard; the plugin never reads clipboard contents and does not create or modify vault notes.
 
+## Dependencies
+
+Hybrid Chat is a thin client over existing services and depends on:
+
+- **Obsidian 1.13.0 or newer, desktop only** (macOS, Windows, or Linux). The plugin does not run on mobile or in the Obsidian web app.
+- **One [Obsidian Hybrid Search (OHS)](https://github.com/flowing-abyss/obsidian-hybrid-search) endpoint per vault you want to search** — a running OHS Streamable HTTP MCP endpoint (default `http://127.0.0.1:3939/mcp`). Hybrid Chat does not bundle or start OHS; it only queries the endpoint's `search` and `read` tools read-only.
+- **One OpenAI-compatible chat provider** — any server exposing `POST /v1/chat/completions`, for example a local LM Studio server (default base URL `http://127.0.0.1:1234/v1`) or a remote HTTPS endpoint. Remote providers must use HTTPS; plain HTTP is accepted only on loopback hosts. Provider API keys are stored as Obsidian `SecretStorage` secrets, never in plugin data.
+- **Building from source only**: Node.js 24 and npm.
+
+## Installation
+
+1. **Prepare the prerequisites** (once per machine):
+   - In each vault you want to chat with, install and configure the OHS plugin and start its Streamable HTTP MCP endpoint — see the [OHS repository](https://github.com/flowing-abyss/obsidian-hybrid-search) for installation and endpoint setup.
+   - Run an OpenAI-compatible model server (for example, LM Studio's local server) and note its base URL, model ID, and API key if it has one.
+2. **Install Hybrid Chat**: in Obsidian, open Settings → Community plugins → Browse and install **Hybrid Chat**, or manually download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/jmiba/obsidian-hybrid-chat/releases) into `<vault>/.obsidian/plugins/hybrid-chat/`.
+3. **Enable the plugin** and open the chat via the ribbon icon or the **Hybrid Chat: Open chat** command.
+4. **Configure it**: under Settings → Hybrid Chat, register one OHS endpoint per vault (stable ID, display name, exact Obsidian vault name, endpoint URL, timeout) and create an OpenAI-compatible provider profile (base URL, model, API-key secret); then select the active profile. See [Configuration](#configuration) for the full option list.
+
 ## Architecture
 
 1. The sidebar selects the current vault, explicitly selected vaults, or every enabled vault, and restores the last-used scope when the view reopens.
