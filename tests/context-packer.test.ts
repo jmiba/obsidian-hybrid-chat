@@ -10,7 +10,7 @@ import type { RetrievedSource } from "../src/domain";
 const source = (id: string, content: string): RetrievedSource => ({
   path: `${id}.md`, title: id, snippet: "", rank: 1,
   vaultId: "vault", vaultDisplayName: "Vault", obsidianVaultName: "Vault",
-  sourceId: `vault::${id}.md`, rrfScore: 1 / 61, content,
+  sourceId: `vault::${id}.md`, content,
 });
 
 describe("context packing", () => {
@@ -41,6 +41,14 @@ describe("context packing", () => {
     const excerpt = extractRelevantExcerpt("Beginning of note. ".repeat(30), "unmatched passage", 80);
     expect(excerpt).toContain("Beginning of note");
     expect(excerpt.length).toBeLessThanOrEqual(80);
+  });
+
+  it("keeps excerpt offsets aligned when lowercase normalization expands a character", () => {
+    const snippet = "TARGET abcdefghijklmnop";
+    const content = `${"x".repeat(30)}İ${snippet}${"y".repeat(80)}`;
+    const excerpt = extractRelevantExcerpt(content, snippet, 40);
+
+    expect(excerpt).toContain(`İ${snippet}`);
   });
 
   it("retains explicitly requested property context beside the relevant passage", () => {

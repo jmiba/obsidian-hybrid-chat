@@ -8,7 +8,7 @@ import { HybridChatSettingTab, loadSettings, sanitizeSettingsForPersistence } fr
 
 export default class HybridChatPlugin extends Plugin {
   settings!: HybridChatSettings;
-  readonly retriever = new FederatedRetriever(new OhsMcpClient());
+  readonly retriever = new FederatedRetriever(new OhsMcpClient(undefined, undefined, this.manifest.version));
   readonly chatClient = new OpenAiCompatibleChatClient();
 
   async onload(): Promise<void> {

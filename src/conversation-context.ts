@@ -1,9 +1,9 @@
 import type { ChatCompletionMessage, ChatMessage } from "./domain";
 
-export const DEFAULT_CHAT_HISTORY_MESSAGES = 12;
-export const DEFAULT_CHAT_HISTORY_CHARACTERS = 12_000;
+const DEFAULT_CHAT_HISTORY_MESSAGES = 12;
+const DEFAULT_CHAT_HISTORY_CHARACTERS = 12_000;
 
-export interface ChatHistoryOptions {
+interface ChatHistoryOptions {
   maxMessages?: number;
   maxCharacters?: number;
 }

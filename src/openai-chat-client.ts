@@ -2,7 +2,7 @@ import http from "node:http";
 import https from "node:https";
 import type { ChatCompletionMessage, ChatProviderProfile } from "./domain";
 
-export interface StreamChatOptions {
+interface StreamChatOptions {
   profile: ChatProviderProfile;
   apiKey: string;
   messages: ChatCompletionMessage[];
@@ -29,7 +29,7 @@ export class OpenAiCompatibleChatClient {
   }
 }
 
-export function buildChatCompletionsUrl(baseUrl: string): URL {
+function buildChatCompletionsUrl(baseUrl: string): URL {
   const url = new URL(baseUrl.trim());
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new Error("Chat provider URL must use http or https");
@@ -57,6 +57,16 @@ function streamRequest(
     let answer = "";
     let raw = "";
     let settled = false;
+    const acceptSseLine = (line: string): void => {
+      if (!line.startsWith("data:")) return;
+      const data = line.slice(5).trim();
+      if (!data || data === "[DONE]") return;
+      const token = parseStreamToken(data);
+      if (token) {
+        answer += token;
+        onToken(token);
+      }
+    };
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
@@ -78,20 +88,13 @@ function streamRequest(
         if (contentType.includes("text/event-stream")) {
           const lines = raw.split(/\r?\n/);
           raw = lines.pop() ?? "";
-          for (const line of lines) {
-            if (!line.startsWith("data:")) continue;
-            const data = line.slice(5).trim();
-            if (!data || data === "[DONE]") continue;
-            const token = parseStreamToken(data);
-            if (token) {
-              answer += token;
-              onToken(token);
-            }
-          }
+          for (const line of lines) acceptSseLine(line);
         }
       });
       response.on("end", () => {
-        if (!contentType.includes("text/event-stream")) {
+        if (contentType.includes("text/event-stream")) {
+          acceptSseLine(raw.replace(/\r$/, ""));
+        } else {
           try {
             const value = JSON.parse(raw) as { choices?: Array<{ message?: { content?: unknown } }> };
             const content = value.choices?.[0]?.message?.content;
@@ -109,14 +112,19 @@ function streamRequest(
       response.on("error", (error) => finish(error));
     });
     const abort = () => {
-      request.destroy(new Error("Request canceled"));
-      finish(new Error("Request canceled"));
+      const error = abortError();
+      request.destroy(error);
+      finish(error);
     };
     signal?.addEventListener("abort", abort, { once: true });
     request.on("error", (error) => finish(error));
     request.end(body);
     if (signal?.aborted) abort();
   });
+}
+
+function abortError(): Error {
+  return new DOMException("Request canceled", "AbortError");
 }
 
 function parseStreamToken(data: string): string {

@@ -158,6 +158,31 @@ describe("endpoint partial failure", () => {
     ]);
   });
 
+  it("joins search and read results that disagree about a leading slash", async () => {
+    class SlashGateway extends FakeGateway {
+      override search(): Promise<SearchResult[]> {
+        return Promise.resolve([{ path: "/one.md", title: "One", snippet: "one", rank: 1 }]);
+      }
+
+      override read(endpoint: string, paths: string[]): Promise<OhsReadResult[]> {
+        this.reads.push({ endpoint, paths });
+        return Promise.resolve([{ path: "/one.md", title: "One", content: "content", found: true }]);
+      }
+    }
+
+    const gateway = new SlashGateway();
+    const result = await new FederatedRetriever(gateway).retrieve(
+      "question",
+      [endpoints[0]!],
+      { mode: "all", vaultIds: [] },
+      "A",
+      { searchLimitPerVault: 8, maxNotes: 1, enableReranking: false, enableRelatedTraversal: false, frontmatterFilters: [] },
+    );
+
+    expect(gateway.reads).toEqual([{ endpoint: "http://healthy/mcp", paths: ["one.md"] }]);
+    expect(result.sources).toEqual([expect.objectContaining({ path: "one.md", content: "content" })]);
+  });
+
   it("expands one anchor per vault and promotes only bounded linked candidates", async () => {
     class RelatedGateway extends FakeGateway {
       readonly relatedCalls: Array<{ endpoint: string; path: string; frontmatter: string[] }> = [];

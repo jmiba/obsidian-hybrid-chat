@@ -1,4 +1,4 @@
-export interface ParsedPropertyDirectives {
+interface ParsedPropertyDirectives {
   searchQuery: string;
   frontmatterFilters: string[];
   requestedProperties: string[];

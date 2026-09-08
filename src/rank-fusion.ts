@@ -6,11 +6,15 @@ export interface RankedVaultResults {
 }
 
 export function namespaceSource(vaultId: string, path: string): string {
-  return `${vaultId}::${normalizeVaultRelativePath(path)}`;
+  return `${vaultId}::${normalizeOhsResultPath(path)}`;
 }
 
 export function normalizeVaultRelativePath(path: string): string {
   return path.trim().replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/{2,}/g, "/");
+}
+
+export function normalizeOhsResultPath(path: string): string {
+  return normalizeVaultRelativePath(path).replace(/^\/+/, "");
 }
 
 export function fuseRankedResults(
@@ -25,7 +29,7 @@ export function fuseRankedResults(
       const rank = Number.isInteger(result.rank) && result.rank > 0 ? result.rank : index + 1;
       return {
         ...result,
-        path: normalizeVaultRelativePath(result.path),
+        path: normalizeOhsResultPath(result.path),
         rank,
         vaultId: endpoint.id,
         vaultDisplayName: endpoint.displayName,
@@ -65,14 +69,11 @@ export function fuseRankedResults(
     title: candidate.title,
     snippet: candidate.snippet,
     rank: candidate.rank,
-    score: candidate.score,
-    tags: candidate.tags,
     retrievalKind: candidate.retrievalKind,
     relatedFromPath: candidate.relatedFromPath,
     vaultId: candidate.vaultId,
     vaultDisplayName: candidate.vaultDisplayName,
     obsidianVaultName: candidate.obsidianVaultName,
     sourceId: candidate.sourceId,
-    rrfScore: candidate.rrfScore,
   }));
 }

@@ -1,11 +1,11 @@
 import type { PackedContext, RetrievedSource } from "./domain";
 
-export interface ContextPackingOptions {
+interface ContextPackingOptions {
   maxContextChars: number;
   maxCharsPerNote: number;
 }
 
-export interface SystemPromptOptions {
+interface SystemPromptOptions {
   customInstructions?: string;
   includeCurrentDateTime?: boolean;
   now?: Date;
@@ -124,19 +124,23 @@ function normalizeWithOffsets(value: string): { text: string; offsets: number[] 
   let text = "";
   const offsets: number[] = [];
   let previousWasWhitespace = false;
-  for (let index = 0; index < value.length; index += 1) {
-    const character = value[index] ?? "";
+  for (let index = 0; index < value.length;) {
+    const codePoint = value.codePointAt(index);
+    const character = codePoint === undefined ? "" : String.fromCodePoint(codePoint);
     if (/\s/u.test(character)) {
       if (!previousWasWhitespace && text.length > 0) {
         text += " ";
         offsets.push(index);
       }
       previousWasWhitespace = true;
+      index += character.length;
       continue;
     }
-    text += character.toLocaleLowerCase();
-    offsets.push(index);
+    const normalized = character.toLocaleLowerCase();
+    text += normalized;
+    for (let normalizedIndex = 0; normalizedIndex < normalized.length; normalizedIndex += 1) offsets.push(index);
     previousWasWhitespace = false;
+    index += character.length;
   }
   return { text, offsets };
 }

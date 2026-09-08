@@ -363,6 +363,10 @@ export class HybridChatView extends ItemView {
   }
 
   private async newSession(): Promise<void> {
+    if (this.controller) {
+      new Notice("Wait for the current response to finish before creating another chat.");
+      return;
+    }
     const now = new Date().toISOString();
     const id = this.plugin.createId("chat");
     this.plugin.settings.sessions.push({ id, name: "New chat", createdAt: now, updatedAt: now, messages: [] });
@@ -394,6 +398,10 @@ export class HybridChatView extends ItemView {
   }
 
   private async deleteSession(): Promise<void> {
+    if (this.controller) {
+      new Notice("Wait for the current response to finish before deleting chats.");
+      return;
+    }
     if (this.plugin.settings.sessions.length <= 1) {
       new Notice("At least one chat session is required.");
       return;

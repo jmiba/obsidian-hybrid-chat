@@ -213,9 +213,15 @@ export class HybridChatSettingTab extends PluginSettingTab {
       this.definition("Display name", undefined, (setting) => setting.addText((text) => text
         .setValue(provider.displayName)
         .onChange((value) => { provider.displayName = value.trim(); this.persist(); }))),
-      this.definition("Base URL", "HTTPS for remote providers; loopback HTTP is allowed.", (setting) => setting.addText((text) => text
-        .setValue(provider.baseUrl)
-        .onChange((value) => { provider.baseUrl = value.trim(); this.persist(); }))),
+      this.definition("Base URL", "HTTPS for remote providers; loopback HTTP is allowed.", (setting) => setting.addText((text) => {
+        text.setValue(provider.baseUrl).onChange((value) => {
+          const normalized = value.trim();
+          if (!normalized) return;
+          provider.baseUrl = normalized;
+          this.persist();
+        });
+        text.inputEl.addEventListener("blur", () => { text.setValue(provider.baseUrl); });
+      })),
       this.definition("Model", undefined, (setting) => setting.addText((text) => text
         .setValue(provider.model)
         .onChange((value) => { provider.model = value.trim(); this.persist(); }))),
@@ -265,28 +271,47 @@ export class HybridChatSettingTab extends PluginSettingTab {
 
   private endpointDefinitions(endpoint: OhsEndpointConfig): SettingDefinition[] {
     return [
-      this.definition("Stable vault ID", "Used to namespace every source; avoid changing after use.", (setting) => setting.addText((text) => text
-        .setValue(endpoint.id)
-        .onChange((value) => { endpoint.id = stableId(value); this.persist(); }))),
+      this.definition("Stable vault ID", "Used to namespace every source; avoid changing after use.", (setting) => setting.addText((text) => {
+        text.setValue(endpoint.id).onChange((value) => {
+          const normalized = stableId(value);
+          if (!normalized) return;
+          endpoint.id = normalized;
+          this.persist();
+        });
+        text.inputEl.addEventListener("blur", () => { text.setValue(endpoint.id); });
+      })),
       this.definition("Display name", undefined, (setting) => setting.addText((text) => text
         .setValue(endpoint.displayName)
         .onChange((value) => { endpoint.displayName = value.trim(); this.persist(); }))),
-      this.definition("MCP endpoint", undefined, (setting) => setting.addText((text) => text
-        .setValue(endpoint.endpoint)
-        .onChange((value) => { endpoint.endpoint = value.trim(); this.persist(); }))),
+      this.definition("MCP endpoint", undefined, (setting) => setting.addText((text) => {
+        text.setValue(endpoint.endpoint).onChange((value) => {
+          const normalized = value.trim();
+          if (!normalized) return;
+          endpoint.endpoint = normalized;
+          this.persist();
+        });
+        text.inputEl.addEventListener("blur", () => { text.setValue(endpoint.endpoint); });
+      })),
       this.definition("Obsidian vault name", "Exact vault name used for current-vault matching and Obsidian:// links.", (setting) => setting.addText((text) => text
         .setValue(endpoint.obsidianVaultName)
         .onChange((value) => { endpoint.obsidianVaultName = value.trim(); this.persist(); }))),
       this.definition(
         "Request timeout (seconds)",
         "Maximum time Hybrid Chat waits for each OHS search or read. Timing out does not cancel database work already running inside OHS.",
-        (setting) => setting.addText((text) => text
-          .setValue(String(Math.round(endpoint.requestTimeoutMs / 1000)))
-          .onChange((value) => {
+        (setting) => setting.addText((text) => {
+          text.setValue(String(Math.round(endpoint.requestTimeoutMs / 1000))).onChange((value) => {
+            const parsed = parseFiniteNumber(value);
+            if (parsed === null) return;
             const currentSeconds = Math.round(endpoint.requestTimeoutMs / 1000);
-            endpoint.requestTimeoutMs = boundedInteger(Number(value), 5, 600, currentSeconds) * 1000;
+            const nextSeconds = boundedInteger(parsed, 5, 600, currentSeconds);
+            endpoint.requestTimeoutMs = nextSeconds * 1000;
+            if (value !== String(nextSeconds)) text.setValue(String(nextSeconds));
             this.persist();
-          })),
+          });
+          text.inputEl.addEventListener("blur", () => {
+            text.setValue(String(Math.round(endpoint.requestTimeoutMs / 1000)));
+          });
+        }),
       ),
       this.definition("Enabled", undefined, (setting) => setting.addToggle((toggle) => toggle
         .setValue(endpoint.enabled)
@@ -355,12 +380,17 @@ export class HybridChatSettingTab extends PluginSettingTab {
     min: number,
     max: number,
   ): SettingDefinition {
-    return this.definition(name, description, (setting) => setting.addText((text) => text
-      .setValue(String(this.plugin.settings[key]))
-      .onChange((value) => {
-        this.plugin.settings[key] = boundedInteger(Number(value), min, max, this.plugin.settings[key]);
+    return this.definition(name, description, (setting) => setting.addText((text) => {
+      text.setValue(String(this.plugin.settings[key])).onChange((value) => {
+        const parsed = parseFiniteNumber(value);
+        if (parsed === null) return;
+        const nextValue = boundedInteger(parsed, min, max, this.plugin.settings[key]);
+        this.plugin.settings[key] = nextValue;
+        if (value !== String(nextValue)) text.setValue(String(nextValue));
         this.persist();
-      })));
+      });
+      text.inputEl.addEventListener("blur", () => { text.setValue(String(this.plugin.settings[key])); });
+    }));
   }
 
   private persist(): void {
@@ -418,15 +448,12 @@ function sanitizeSource(source: RetrievedSource): RetrievedSource {
     title: source.title,
     snippet: source.snippet,
     rank: source.rank,
-    score: source.score,
-    tags: source.tags ? [...source.tags] : undefined,
     retrievalKind: source.retrievalKind,
     relatedFromPath: source.relatedFromPath,
     vaultId: source.vaultId,
     vaultDisplayName: source.vaultDisplayName,
     obsidianVaultName: source.obsidianVaultName,
     sourceId: source.sourceId,
-    rrfScore: source.rrfScore,
     content: source.content,
   };
 }
@@ -527,15 +554,12 @@ function parseSource(value: unknown): RetrievedSource[] {
     title: asString(item.title),
     snippet: asString(item.snippet),
     rank: boundedInteger(item.rank, 1, Number.MAX_SAFE_INTEGER, 1),
-    score: typeof item.score === "number" && Number.isFinite(item.score) ? item.score : null,
-    tags: asStringArray(item.tags),
     retrievalKind: item.retrievalKind === "related" ? "related" : "direct",
     relatedFromPath: asString(item.relatedFromPath) || undefined,
     vaultId,
     vaultDisplayName: asString(item.vaultDisplayName),
     obsidianVaultName: asString(item.obsidianVaultName),
     sourceId: asString(item.sourceId),
-    rrfScore: typeof item.rrfScore === "number" && Number.isFinite(item.rrfScore) ? item.rrfScore : 0,
     content: asString(item.content),
   }];
 }
@@ -555,8 +579,17 @@ function asStringArray(value: unknown): string[] {
 }
 
 function boundedInteger(value: unknown, min: number, max: number, fallback: number): number {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? Math.max(min, Math.min(max, Math.round(parsed))) : fallback;
+  const parsed = typeof value === "number" ? value : parseFiniteNumber(value);
+  return parsed !== null && Number.isFinite(parsed)
+    ? Math.max(min, Math.min(max, Math.round(parsed)))
+    : fallback;
+}
+
+function parseFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function stableId(value: string): string {

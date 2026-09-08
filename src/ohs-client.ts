@@ -3,8 +3,8 @@ import { McpHttpClient, type McpTool, type McpToolResult } from "./mcp-http-clie
 
 type JsonRecord = Record<string, unknown>;
 
-export const OHS_RETRY_DELAYS_MS = [500, 1_500, 3_500, 6_000] as const;
-export const OHS_CAPABILITY_CACHE_TTL_MS = 5 * 60_000;
+const OHS_RETRY_DELAYS_MS = [500, 1_500, 3_500, 6_000] as const;
+const OHS_CAPABILITY_CACHE_TTL_MS = 5 * 60_000;
 
 export interface OhsReadResult {
   path: string;
@@ -43,6 +43,7 @@ export class OhsMcpClient implements OhsGateway {
       new McpHttpClient(endpoint, clientInfo)
     ),
     private readonly now: () => number = () => Date.now(),
+    private readonly clientVersion = "development",
   ) {}
 
   async search(
@@ -137,7 +138,7 @@ export class OhsMcpClient implements OhsGateway {
     requiredSearchProperties: string[] = [],
   ): Promise<unknown> {
     const url = validateMcpEndpoint(endpoint);
-    const client = this.createClient(url, { name: "obsidian-hybrid-chat", version: "0.1.4" });
+    const client = this.createClient(url, { name: "obsidian-hybrid-chat", version: this.clientVersion });
     try {
       await client.initialize(signal);
       let tool = await this.resolveTool(client, url, requestedName, signal);
@@ -230,14 +231,16 @@ export function buildOhsRelatedArguments(path: string, frontmatter: string[] = [
   };
 }
 
-/** Drop optional related-search fields that an older advertised OHS schema does not support. */
+/** Drop optional search fields that an older advertised OHS schema does not support. */
 export function adaptSearchArgumentsForTool(args: JsonRecord, inputSchema: unknown): JsonRecord {
   const properties = asRecord(asRecord(inputSchema)?.properties);
   const compatible = { ...args };
-  if (args.related === true && properties) {
-    for (const optionalName of ["direction", "link_type", "frontmatter", "snippet_length"]) {
-      if (!Object.prototype.hasOwnProperty.call(properties, optionalName)) delete compatible[optionalName];
-    }
+  if (!properties) return compatible;
+  const optionalNames = args.related === true
+    ? ["direction", "link_type", "frontmatter", "snippet_length"]
+    : ["mode", "rerank", "frontmatter", "snippet_length"];
+  for (const optionalName of optionalNames) {
+    if (!Object.prototype.hasOwnProperty.call(properties, optionalName)) delete compatible[optionalName];
   }
   return compatible;
 }
@@ -262,7 +265,7 @@ export async function withTransientOhsRetries<T>(
   }
 }
 
-export function validateMcpEndpoint(value: string): URL {
+function validateMcpEndpoint(value: string): URL {
   const url = new URL(value.trim());
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("OHS endpoint must use http or https");
@@ -310,8 +313,6 @@ function parseSearchResults(payload: unknown): SearchResult[] {
       title: asString(value.title) || path.replace(/\.md$/i, "").split("/").pop() || path,
       snippet: asString(value.snippet),
       rank: asPositiveInteger(value.rank) ?? index + 1,
-      score: asNumber(value.score),
-      tags: asStringArray(value.tags),
     }];
   });
 }
@@ -330,14 +331,6 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function asStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  return value.filter((item): item is string => typeof item === "string");
-}
-
-function asNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
 
 function asPositiveInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;

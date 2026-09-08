@@ -41,6 +41,13 @@ describe("OHS search arguments", () => {
     });
   });
 
+  it("drops optional direct-search arguments omitted by an older advertised schema", () => {
+    expect(adaptSearchArgumentsForTool(buildOhsSearchArguments("question", 8, true, ["status:active"]), {
+      type: "object",
+      properties: { query: {}, limit: {} },
+    })).toEqual({ query: "question", limit: 8 });
+  });
+
   it("builds a vault-local one-hop links and backlinks request", () => {
     const args = buildOhsRelatedArguments("Projects/Anchor.md", ["status:active"]);
     expect(args).toEqual({
@@ -60,6 +67,27 @@ describe("OHS search arguments", () => {
 });
 
 describe("OHS capability caching", () => {
+  it("advertises the plugin version supplied by the host", async () => {
+    const client = {
+      initialize: vi.fn().mockResolvedValue(undefined),
+      listTools: vi.fn().mockResolvedValue([{
+        name: "search",
+        inputSchema: { type: "object", properties: { query: {}, limit: {} } },
+      }]),
+      callTool: vi.fn().mockResolvedValue({ content: [{ type: "text", text: '{"results":[]}' }] }),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const createClient = vi.fn(() => client);
+
+    await new OhsMcpClient(createClient, () => 1_000, "0.1.5")
+      .search("http://127.0.0.1:3939/mcp", "question", 8, false, []);
+
+    expect(createClient).toHaveBeenCalledWith(
+      new URL("http://127.0.0.1:3939/mcp"),
+      { name: "obsidian-hybrid-chat", version: "0.1.5" },
+    );
+  });
+
   it("reuses discovered tool names and schemas for an endpoint", async () => {
     const client = {
       initialize: vi.fn().mockResolvedValue(undefined),
@@ -89,7 +117,7 @@ describe("OHS capability caching", () => {
       initialize: vi.fn().mockResolvedValue(undefined),
       listTools: vi.fn().mockResolvedValue([{
         name: "search",
-        inputSchema: { type: "object", properties: { query: {} } },
+        inputSchema: { type: "object", properties: { query: {}, rerank: {} } },
       }]),
       callTool: vi.fn().mockResolvedValue({
         content: [{ type: "text", text: '{"results":[]}' }],
@@ -141,7 +169,7 @@ describe("OHS capability caching", () => {
       initialize: vi.fn().mockResolvedValue(undefined),
       listTools: vi.fn().mockResolvedValue([{
         name: "search",
-        inputSchema: { type: "object", properties: { query: {} } },
+        inputSchema: { type: "object", properties: { query: {}, rerank: {} } },
       }]),
       callTool: vi.fn()
         .mockRejectedValueOnce(new Error("reranker unavailable"))

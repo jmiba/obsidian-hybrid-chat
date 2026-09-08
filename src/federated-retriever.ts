@@ -7,9 +7,14 @@ import type {
   VaultSelection,
 } from "./domain";
 import type { OhsGateway } from "./ohs-client";
-import { fuseRankedResults, normalizeVaultRelativePath, type RankedVaultResults } from "./rank-fusion";
+import {
+  fuseRankedResults,
+  normalizeOhsResultPath,
+  normalizeVaultRelativePath,
+  type RankedVaultResults,
+} from "./rank-fusion";
 
-export interface RetrievalOptions {
+interface RetrievalOptions {
   searchLimitPerVault: number;
   maxNotes: number;
   enableReranking: boolean;
@@ -19,7 +24,7 @@ export interface RetrievalOptions {
 
 const RELATED_RESULTS_PER_ANCHOR = 2;
 
-export class OhsRequestTimeoutError extends Error {
+class OhsRequestTimeoutError extends Error {
   readonly name = "OhsRequestTimeoutError";
 
   constructor(
@@ -110,7 +115,7 @@ export class FederatedRetriever {
         ));
         const notesByPath = new Map(notes
           .filter((note) => note.found)
-          .map((note) => [normalizeVaultRelativePath(note.path), note]));
+          .map((note) => [normalizeOhsResultPath(note.path), note]));
         const sources = selected.flatMap((candidate) => {
           const note = notesByPath.get(candidate.path);
           if (!note) return [];
@@ -219,7 +224,7 @@ function mergeRelatedCandidates(
   return interleaved;
 }
 
-export function selectEndpoints(
+function selectEndpoints(
   endpoints: OhsEndpointConfig[],
   selection: VaultSelection,
   currentVaultName: string,

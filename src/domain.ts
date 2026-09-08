@@ -1,4 +1,4 @@
-export type VaultSelectionMode = "current" | "specific" | "all";
+type VaultSelectionMode = "current" | "specific" | "all";
 
 export const DEFAULT_OHS_REQUEST_TIMEOUT_MS = 60_000;
 
@@ -31,8 +31,6 @@ export interface SearchResult {
   title: string;
   snippet: string;
   rank: number;
-  score?: number | null;
-  tags?: string[];
   retrievalKind?: "direct" | "related";
   relatedFromPath?: string;
 }
@@ -42,7 +40,6 @@ export interface NamespacedSearchResult extends SearchResult {
   vaultDisplayName: string;
   obsidianVaultName: string;
   sourceId: string;
-  rrfScore: number;
 }
 
 export interface RetrievedSource extends NamespacedSearchResult {
