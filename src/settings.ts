@@ -451,6 +451,11 @@ function sanitizeMessage(message: ChatMessage): ChatMessage {
       message: item.message,
     })),
     retrievalUnavailable: message.retrievalUnavailable === true,
+    truncated: message.truncated === true,
+    truncatedReason: message.truncated === true
+      && (message.truncatedReason === "length" || message.truncatedReason === "stream-ended")
+      ? message.truncatedReason
+      : undefined,
   };
 }
 
@@ -552,6 +557,11 @@ function parseMessage(value: unknown): ChatMessage[] {
     sources,
     failures,
     retrievalUnavailable: item.retrievalUnavailable === true,
+    truncated: item.truncated === true,
+    truncatedReason: item.truncated === true
+      && (item.truncatedReason === "length" || item.truncatedReason === "stream-ended")
+      ? item.truncatedReason
+      : undefined,
   }];
 }
 

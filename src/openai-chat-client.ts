@@ -2,6 +2,13 @@ import http from "node:http";
 import https from "node:https";
 import type { ChatCompletionMessage, ChatProviderProfile } from "./domain";
 
+export type ChatCompletionStatus = "complete" | "length" | "incomplete";
+
+export interface StreamChatResult {
+  answer: string;
+  status: ChatCompletionStatus;
+}
+
 interface StreamChatOptions {
   profile: ChatProviderProfile;
   apiKey: string;
@@ -11,7 +18,7 @@ interface StreamChatOptions {
 }
 
 export class OpenAiCompatibleChatClient {
-  async stream(options: StreamChatOptions): Promise<string> {
+  async stream(options: StreamChatOptions): Promise<StreamChatResult> {
     const url = buildChatCompletionsUrl(options.profile.baseUrl);
     const body = JSON.stringify({
       model: options.profile.model,
@@ -51,20 +58,23 @@ function streamRequest(
   headers: Record<string, string>,
   signal: AbortSignal | undefined,
   onToken: (token: string) => void,
-): Promise<string> {
+): Promise<StreamChatResult> {
   return new Promise((resolve, reject) => {
     const transport = url.protocol === "https:" ? https : http;
     let answer = "";
     let raw = "";
     let settled = false;
+    let sseResponse = false;
+    let finishReason: string | null = null;
     const acceptSseLine = (line: string): void => {
       if (!line.startsWith("data:")) return;
       const data = line.slice(5).trim();
       if (!data || data === "[DONE]") return;
-      const token = parseStreamToken(data);
-      if (token) {
-        answer += token;
-        onToken(token);
+      const event = parseStreamEvent(data);
+      if (event.finishReason) finishReason = event.finishReason;
+      if (event.token) {
+        answer += event.token;
+        onToken(event.token);
       }
     };
     const finish = (error?: Error) => {
@@ -72,7 +82,7 @@ function streamRequest(
       settled = true;
       signal?.removeEventListener("abort", abort);
       if (error) reject(error);
-      else resolve(answer);
+      else resolve({ answer, status: completionStatus(sseResponse, finishReason) });
     };
     const request = transport.request(url, { method: "POST", headers }, (response) => {
       response.setEncoding("utf8");
@@ -83,21 +93,25 @@ function streamRequest(
         return;
       }
       const contentType = String(response.headers["content-type"] ?? "");
+      sseResponse = contentType.includes("text/event-stream");
       response.on("data", (chunk: string) => {
         raw += chunk;
-        if (contentType.includes("text/event-stream")) {
+        if (sseResponse) {
           const lines = raw.split(/\r?\n/);
           raw = lines.pop() ?? "";
           for (const line of lines) acceptSseLine(line);
         }
       });
       response.on("end", () => {
-        if (contentType.includes("text/event-stream")) {
+        if (sseResponse) {
           acceptSseLine(raw.replace(/\r$/, ""));
         } else {
           try {
-            const value = JSON.parse(raw) as { choices?: Array<{ message?: { content?: unknown } }> };
+            const value = JSON.parse(raw) as { choices?: Array<{ message?: { content?: unknown }; finish_reason?: unknown }> };
             const content = value.choices?.[0]?.message?.content;
+            finishReason = typeof value.choices?.[0]?.finish_reason === "string"
+              ? value.choices[0].finish_reason
+              : null;
             if (typeof content === "string") {
               answer = content;
               onToken(content);
@@ -123,16 +137,24 @@ function streamRequest(
   });
 }
 
+function completionStatus(sseResponse: boolean, finishReason: string | null): ChatCompletionStatus {
+  if (finishReason === "length") return "length";
+  if (finishReason === null && sseResponse) return "incomplete";
+  return "complete";
+}
+
 function abortError(): Error {
   return new DOMException("Request canceled", "AbortError");
 }
 
-function parseStreamToken(data: string): string {
+function parseStreamEvent(data: string): { token: string; finishReason: string | null } {
   try {
-    const value = JSON.parse(data) as { choices?: Array<{ delta?: { content?: unknown } }> };
-    const content = value.choices?.[0]?.delta?.content;
-    return typeof content === "string" ? content : "";
+    const value = JSON.parse(data) as { choices?: Array<{ delta?: { content?: unknown }; finish_reason?: unknown }> };
+    const choice = value.choices?.[0];
+    const content = choice?.delta?.content;
+    const finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason : null;
+    return { token: typeof content === "string" ? content : "", finishReason };
   } catch {
-    return "";
+    return { token: "", finishReason: null };
   }
 }

@@ -221,7 +221,7 @@ export class HybridChatView extends ItemView {
       const apiKey = profile.apiKeySecretId
         ? this.app.secretStorage.getSecret(profile.apiKeySecretId) ?? ""
         : "";
-      await this.plugin.chatClient.stream({
+      const generation = await this.plugin.chatClient.stream({
         profile,
         apiKey,
         messages: [{
@@ -238,6 +238,13 @@ export class HybridChatView extends ItemView {
         },
       });
       if (!assistantMessage.content) assistantMessage.content = "No response content was returned.";
+      else if (generation.status === "length") {
+        assistantMessage.truncated = true;
+        assistantMessage.truncatedReason = "length";
+      } else if (generation.status === "incomplete") {
+        assistantMessage.truncated = true;
+        assistantMessage.truncatedReason = "stream-ended";
+      }
       await this.plugin.saveSettings();
     } catch (error) {
       const canceled = this.controller.signal.aborted;
@@ -310,11 +317,22 @@ export class HybridChatView extends ItemView {
     const placeholder = message.role === "assistant" && !isWorking ? "…" : "";
     await MarkdownRenderer.render(this.app, message.content || placeholder, content, "", this);
     if (message.role === "assistant") {
+      this.renderTruncation(wrapper, message);
       this.renderFailures(wrapper, message);
       if (shouldShowSources(isWorking, this.sourcesRevealed.has(message.id))) {
         this.renderSources(wrapper, message.sources ?? [], message.retrievalUnavailable === true);
       }
     }
+  }
+
+  private renderTruncation(wrapper: HTMLElement, message: ChatMessage): void {
+    if (message.truncated !== true) return;
+    wrapper.createDiv({
+      cls: "ohc-truncation-note",
+      text: message.truncatedReason === "length"
+        ? "The provider stopped the response at the model's token limit. The text may be incomplete."
+        : "The provider ended the stream without a completion signal. The text may be incomplete.",
+    });
   }
 
   private renderWorkingStatus(wrapper: HTMLElement): void {

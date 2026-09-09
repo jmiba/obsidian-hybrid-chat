@@ -74,6 +74,8 @@ export interface ChatMessage {
   sources?: RetrievedSource[];
   failures?: RetrievalFailure[];
   retrievalUnavailable?: boolean;
+  truncated?: boolean;
+  truncatedReason?: "length" | "stream-ended";
 }
 
 export interface ChatSession {

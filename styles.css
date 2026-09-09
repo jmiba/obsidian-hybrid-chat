@@ -162,6 +162,12 @@
   margin-top: var(--size-4-2);
 }
 
+.ohc-truncation-note {
+  color: var(--text-warning);
+  font-size: var(--font-ui-smaller);
+  margin-top: var(--size-4-2);
+}
+
 .ohc-composer {
   border-top: 1px solid var(--background-modifier-border);
   border-bottom: 0;
