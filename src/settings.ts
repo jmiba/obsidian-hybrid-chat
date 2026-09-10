@@ -132,6 +132,9 @@ export function sanitizeSettingsForPersistence(settings: HybridChatSettings): Hy
 }
 
 export class HybridChatSettingTab extends PluginSettingTab {
+  private readonly availableModels = new Map<string, string[]>();
+  private readonly loadingModels = new Set<string>();
+
   constructor(app: App, private readonly plugin: HybridChatPlugin) {
     super(app, plugin);
   }
@@ -217,18 +220,24 @@ export class HybridChatSettingTab extends PluginSettingTab {
         text.setValue(provider.baseUrl).onChange((value) => {
           const normalized = value.trim();
           if (!normalized) return;
+          this.availableModels.delete(provider.id);
           provider.baseUrl = normalized;
           this.persist();
         });
         text.inputEl.addEventListener("blur", () => { text.setValue(provider.baseUrl); });
       })),
-      this.definition("Model", undefined, (setting) => setting.addText((text) => text
+      this.definition("Model ID", "Enter a model ID manually, or refresh and choose one below.", (setting) => setting.addText((text) => text
         .setValue(provider.model)
         .onChange((value) => { provider.model = value.trim(); this.persist(); }))),
+      this.modelPickerDefinition(provider),
       this.definition("API key", "Select or create an Obsidian secret. Only its identifier is persisted.", (setting) => setting
         .addComponent((componentContainer) => new SecretComponent(this.app, componentContainer)
           .setValue(provider.apiKeySecretId)
-          .onChange((value) => { provider.apiKeySecretId = value; this.persist(); }))),
+          .onChange((value) => {
+            this.availableModels.delete(provider.id);
+            provider.apiKeySecretId = value;
+            this.persist();
+          }))),
       this.definition("Enabled", undefined, (setting) => setting.addToggle((toggle) => toggle
         .setValue(provider.enabled)
         .onChange((value) => { provider.enabled = value; this.persist(); }))),
@@ -248,6 +257,66 @@ export class HybridChatSettingTab extends PluginSettingTab {
           this.update();
         }))),
     ];
+  }
+
+  private modelPickerDefinition(provider: ChatProviderProfile): SettingDefinition {
+    return this.definition(
+      "Available models",
+      "Loads the provider's OpenAI-compatible /models endpoint. The configured API key is read from Obsidian SecretStorage.",
+      (setting) => {
+        const models = this.availableModels.get(provider.id);
+        setting.addDropdown((dropdown) => {
+          if (models) {
+            if (provider.model && !models.includes(provider.model)) {
+              dropdown.addOption(provider.model, `${provider.model} (configured)`);
+            }
+            for (const model of models) dropdown.addOption(model, model);
+            if (models.length === 0) dropdown.addOption("", "No models returned");
+          } else if (provider.model) {
+            dropdown.addOption(provider.model, `${provider.model} (configured)`);
+          } else {
+            dropdown.addOption("", "Refresh to load models");
+          }
+          dropdown
+            .setValue(provider.model)
+            .setDisabled(!models || models.length === 0 || this.loadingModels.has(provider.id))
+            .onChange((value) => {
+              if (!value || value === provider.model) return;
+              provider.model = value;
+              this.persist();
+              this.update();
+            });
+        });
+        setting.addButton((button) => button
+          .setButtonText(this.loadingModels.has(provider.id) ? "Loading…" : "Refresh")
+          .setDisabled(this.loadingModels.has(provider.id))
+          .onClick(() => { void this.refreshModels(provider); }));
+      },
+    );
+  }
+
+  private async refreshModels(provider: ChatProviderProfile): Promise<void> {
+    if (this.loadingModels.has(provider.id)) return;
+    const requestedBaseUrl = provider.baseUrl;
+    const requestedSecretId = provider.apiKeySecretId;
+    this.loadingModels.add(provider.id);
+    this.update();
+    try {
+      const apiKey = provider.apiKeySecretId
+        ? this.app.secretStorage.getSecret(provider.apiKeySecretId) ?? ""
+        : "";
+      const models = await this.plugin.modelClient.list(provider, apiKey);
+      if (provider.baseUrl !== requestedBaseUrl || provider.apiKeySecretId !== requestedSecretId) return;
+      this.availableModels.set(provider.id, models);
+      new Notice(models.length === 0
+        ? `No models were returned by ${provider.displayName}.`
+        : `Found ${models.length} model${models.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      new Notice(`Could not load models: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.loadingModels.delete(provider.id);
+      this.update();
+    }
   }
 
   private addEndpointDefinition(): SettingDefinition {

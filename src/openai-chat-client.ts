@@ -1,6 +1,7 @@
 import http from "node:http";
 import https from "node:https";
 import type { ChatCompletionMessage, ChatProviderProfile } from "./domain";
+import { buildOpenAiCompatibleUrl } from "./openai-provider-url";
 
 export type ChatCompletionStatus = "complete" | "length" | "incomplete";
 
@@ -19,7 +20,7 @@ interface StreamChatOptions {
 
 export class OpenAiCompatibleChatClient {
   async stream(options: StreamChatOptions): Promise<StreamChatResult> {
-    const url = buildChatCompletionsUrl(options.profile.baseUrl);
+    const url = buildOpenAiCompatibleUrl(options.profile.baseUrl, "chat/completions");
     const body = JSON.stringify({
       model: options.profile.model,
       messages: options.messages,
@@ -34,22 +35,6 @@ export class OpenAiCompatibleChatClient {
     if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
     return streamRequest(url, body, headers, options.signal, (token) => options.onToken(token));
   }
-}
-
-function buildChatCompletionsUrl(baseUrl: string): URL {
-  const url = new URL(baseUrl.trim());
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error("Chat provider URL must use http or https");
-  }
-  const local = url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1";
-  if (url.protocol === "http:" && !local) {
-    throw new Error("Remote chat providers must use HTTPS; HTTP is allowed only on loopback");
-  }
-  if (url.username || url.password) throw new Error("Credentials are not allowed in provider URLs");
-  const cleanPath = url.pathname.replace(/\/+$/, "");
-  if (cleanPath.endsWith("/chat/completions")) return url;
-  url.pathname = `${cleanPath || ""}${cleanPath.endsWith("/v1") ? "" : "/v1"}/chat/completions`;
-  return url;
 }
 
 function streamRequest(

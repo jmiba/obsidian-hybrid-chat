@@ -4,12 +4,14 @@ import { FederatedRetriever } from "./federated-retriever";
 import type { ChatProviderProfile, ChatSession, HybridChatSettings } from "./domain";
 import { OhsMcpClient } from "./ohs-client";
 import { OpenAiCompatibleChatClient } from "./openai-chat-client";
+import { OpenAiCompatibleModelClient } from "./openai-model-client";
 import { HybridChatSettingTab, loadSettings, sanitizeSettingsForPersistence } from "./settings";
 
 export default class HybridChatPlugin extends Plugin {
   settings!: HybridChatSettings;
   readonly retriever = new FederatedRetriever(new OhsMcpClient(undefined, undefined, this.manifest.version));
   readonly chatClient = new OpenAiCompatibleChatClient();
+  readonly modelClient = new OpenAiCompatibleModelClient();
 
   async onload(): Promise<void> {
     this.settings = loadSettings(await this.loadData(), this.app.vault.getName());

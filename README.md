@@ -58,7 +58,7 @@ In Obsidian settings:
 
 - Register one OHS Streamable HTTP MCP endpoint per vault, including a stable ID, display name, exact Obsidian vault name, and enabled/default-selection state.
 - Set a per-endpoint request timeout. The default is 60 seconds for each OHS direct search, related-note traversal, or read; a client timeout stops Hybrid Chat from waiting but cannot cancel synchronous database work already running inside OHS.
-- Configure one or more OpenAI-compatible profiles, choose an active profile, enter its model, and select or create an API-key secret.
+- Configure one or more OpenAI-compatible profiles, choose an active profile, and select or create an API-key secret. Use **Refresh** to load model IDs from the provider's `/models` endpoint and choose one, or enter a model ID manually when discovery is unavailable.
 - Optionally customize language, tone, role, or answer structure. Grounding/citation rules remain enforced separately.
 - Keep the local current-date/time injection enabled when relative dates such as “today” or “last week” matter.
 - OHS reranking is enabled by default. Disable it when lower latency matters more than precision. The reranker model is configured on each OHS server, not in this plugin.

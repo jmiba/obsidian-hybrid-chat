@@ -157,6 +157,24 @@ describe("settings sanitization", () => {
     expect(endpointUrl.value()).toBe("http://127.0.0.1:3939/mcp");
   });
 
+  it("selects a discovered model while retaining manual model entry", () => {
+    const { tab, plugin } = settingTab();
+    plugin.settings.providers[0]!.model = "custom-model";
+    const state = tab as unknown as { availableModels: Map<string, string[]> };
+    state.availableModels.set("local-openai-compatible", ["model-a", "model-b"]);
+
+    const picker = renderModelPicker(tab, "Provider: Local OpenAI-compatible");
+    expect(picker.options()).toEqual([
+      ["custom-model", "custom-model (configured)"],
+      ["model-a", "model-a"],
+      ["model-b", "model-b"],
+    ]);
+
+    picker.change("model-b");
+    expect(plugin.settings.providers[0]?.model).toBe("model-b");
+    expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
+  });
+
   it("round-trips the last vault scope and selected endpoint IDs", () => {
     const settings = defaultSettings("Vault");
     settings.defaultSelection = { mode: "specific", vaultIds: ["research", "mail"] };
@@ -193,11 +211,11 @@ function settingTab() {
   const plugin = {
     settings: defaultSettings("Vault"),
     saveSettings: vi.fn().mockResolvedValue(undefined),
+    modelClient: { list: vi.fn().mockResolvedValue([]) },
   };
-  return {
-    plugin,
-    tab: new HybridChatSettingTab({} as never, plugin as never),
-  };
+  const tab = new HybridChatSettingTab({} as never, plugin as never);
+  tab.update = vi.fn();
+  return { plugin, tab };
 }
 
 function renderTextSetting(tab: HybridChatSettingTab, heading: string, name: string) {
@@ -242,5 +260,42 @@ function renderTextSetting(tab: HybridChatSettingTab, heading: string, name: str
     },
     blur() { blurHandler?.(); },
     value: () => currentValue,
+  };
+}
+
+function renderModelPicker(tab: HybridChatSettingTab, heading: string) {
+  type Definition = { name?: string; render?: (setting: unknown) => void };
+  type Group = { heading?: string; items?: Definition[] };
+  const groups = tab.getSettingDefinitions() as unknown as Group[];
+  const definition = groups.find((item) => item.heading === heading)?.items
+    ?.find((item) => item.name === "Available models");
+  if (!definition?.render) throw new Error(`Missing model picker ${heading}`);
+
+  const choices: Array<[string, string]> = [];
+  let changeHandler: ((value: string) => void) | undefined;
+  const dropdown = {
+    addOption(value: string, label: string) { choices.push([value, label]); return dropdown; },
+    setValue() { return dropdown; },
+    setDisabled() { return dropdown; },
+    onChange(handler: (value: string) => void) { changeHandler = handler; return dropdown; },
+  };
+  const button = {
+    setButtonText() { return button; },
+    setDisabled() { return button; },
+    onClick() { return button; },
+  };
+  const setting = {
+    setName() { return setting; },
+    setDesc() { return setting; },
+    addDropdown(configure: (component: typeof dropdown) => void) { configure(dropdown); return setting; },
+    addButton(configure: (component: typeof button) => void) { configure(button); return setting; },
+  };
+  definition.render(setting);
+  return {
+    change(value: string) {
+      if (!changeHandler) throw new Error("Missing change handler");
+      changeHandler(value);
+    },
+    options: () => choices,
   };
 }
