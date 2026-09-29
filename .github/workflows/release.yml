@@ -52,7 +52,8 @@ jobs:
             echo "::error::Release ${RELEASE_TAG} already exists; refusing to create a competing release. Resolve it and re-run."
             exit 1
           fi
-          draft_url="$(gh release create "${RELEASE_TAG}" --verify-tag --title "${RELEASE_TAG}" --generate-notes --draft dist/release/main.js dist/release/manifest.json dist/release/styles.css | tail -n 1)"
+          release_notes="$(node scripts/release-notes.mjs "${RELEASE_TAG}")"
+          draft_url="$(gh release create "${RELEASE_TAG}" --verify-tag --title "${RELEASE_TAG}" --generate-notes --notes "${release_notes}" --draft dist/release/main.js dist/release/manifest.json dist/release/styles.css | tail -n 1)"
 
           # GitHub gives unpublished drafts an untagged-* preview URL even when
           # their tag_name is correct. Verify the release metadata instead.

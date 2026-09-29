@@ -1,7 +1,8 @@
+import { displayMessageContent } from "./citation-analysis";
 import type { ChatMessage } from "./domain";
 
 export function messageClipboardText(message: ChatMessage): string {
-  return message.content;
+  return displayMessageContent(message);
 }
 
 export function removeMessageById(messages: ChatMessage[], messageId: string): {

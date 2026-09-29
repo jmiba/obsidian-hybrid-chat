@@ -33,13 +33,21 @@ Hybrid Chat is a thin client over existing services and depends on:
 7. `ContextPacker` applies per-note and total character limits and centers long-note excerpts around the matching OHS snippet instead of always taking the beginning. Each source is namespaced as `vault_id::vault/relative/path.md`. Only explicitly requested YAML properties from the currently open vault are appended; current OHS `read` responses do not expose arbitrary cross-vault frontmatter.
 8. A fresh local/UTC timestamp and optional custom instructions are added to the protected grounding prompt. No datetime MCP call or model tool selection is required.
 9. `OpenAiCompatibleChatClient` sends the current question and a bounded recent transcript to `/v1/chat/completions`, then streams SSE output. A new chat starts with empty conversational memory. Retrieval never depends on model tool-calling.
-10. Citations in the current vault open through the Obsidian workspace API. Other-vault citations use validated, percent-encoded `obsidian://open?vault=…&file=…` URIs.
+10. The answer's source markers are matched to the notes included in the model's context. Cited notes appear in an expanded **Cited sources** list, while unused context notes appear under collapsed **Other retrieved sources**. Citations in the current vault open through the Obsidian workspace API. Other-vault citations use validated, percent-encoded `obsidian://open?vault=…&file=…` URIs.
 
 The source is split into the OHS client, federated retriever, rank fusion, context packer, OpenAI-compatible client, citation mapper, settings, and session/UI layers.
 
 Chat window in the right-hand sidebar, source opens in the main editor:
 
 <img width="1225" height="900" alt="Chat window in the right-hand sidebar, source opens in the main editor" src="https://github.com/user-attachments/assets/01ca3e1c-3001-4728-930c-d9409694256e" />
+
+### Reading citations
+
+Hybrid Chat accepts source markers such as `[S1]`, `[S1, S2]`, `[1]`, and `【S1】`, including harmless spacing or invisible characters inside the brackets. It renumbers cited notes in their first-mentioned order, starting at `[1]`. Markers for unknown sources are shown as unverified. Matching a marker to a retrieved note does not independently verify that the note supports the claim.
+
+The source lists contain notes whose excerpts fit into the context sent to the chat provider. Notes found by search but excluded by the context limit are not shown as answer sources. If the answer cites none of the included notes, Hybrid Chat says so and keeps the notes under **Other retrieved sources**. Copying a message uses the displayed citation numbers; copying a whole chat as Markdown also includes the source grouping.
+
+Some providers insert narrow no-break spaces between ordinary words, which can prevent line wrapping in the sidebar. Hybrid Chat converts those spaces to regular spaces for display and copying; the original provider response remains stored in the session.
 
 
 ## Privacy boundaries
@@ -100,4 +108,4 @@ For manual testing, copy `manifest.json`, `main.js`, and `styles.css` into `<vau
 - `styles.css`
 - `checksums.sha256`
 
-Pushing a tag that exactly matches `manifest.json` (for example, `0.1.4`) runs the release workflow against the tagged source, generates build-provenance attestations from `checksums.sha256`, and creates a draft GitHub release containing only the three supported Obsidian assets: `main.js`, `manifest.json`, and `styles.css`. Review its generated notes before publishing.
+Pushing a tag that exactly matches `manifest.json` (for example, `0.1.8`) runs the release workflow against the tagged source, generates build-provenance attestations from `checksums.sha256`, and creates a draft GitHub release containing only the three supported Obsidian assets: `main.js`, `manifest.json`, and `styles.css`. The workflow prepends the matching [changelog](CHANGELOG.md) entry to GitHub's generated notes. Review the draft before publishing.

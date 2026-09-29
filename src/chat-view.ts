@@ -11,6 +11,7 @@ import {
 } from "obsidian";
 import type HybridChatPlugin from "./main";
 import type { ChatMessage, ChatSession, RetrievedSource, VaultSelection } from "./domain";
+import { analyzeCitations, displayMessageContent, type CitationAnalysis } from "./citation-analysis";
 import { buildGroundedSystemPrompt, packContext } from "./context-packer";
 import { buildObsidianOpenUri, openCitation } from "./citation-mapper";
 import { appendRequestedProperties, parsePropertyDirectives } from "./property-directives";
@@ -313,14 +314,16 @@ export class HybridChatView extends ItemView {
     deleteButton.disabled = this.controller !== null;
     const isWorking = message.role === "assistant" && message.id === this.workingMessageId;
     if (isWorking) this.renderWorkingStatus(wrapper);
+    const sources = message.role === "assistant" ? message.sources ?? [] : [];
+    const analysis = sources.length > 0 ? analyzeCitations(message.content, sources) : null;
     const content = wrapper.createDiv({ cls: "ohc-message-content" });
     const placeholder = message.role === "assistant" && !isWorking ? "…" : "";
-    await MarkdownRenderer.render(this.app, message.content || placeholder, content, "", this);
+    await MarkdownRenderer.render(this.app, (analysis ? analysis.content : displayMessageContent(message)) || placeholder, content, "", this);
     if (message.role === "assistant") {
       this.renderTruncation(wrapper, message);
       this.renderFailures(wrapper, message);
       if (shouldShowSources(isWorking, this.sourcesRevealed.has(message.id))) {
-        this.renderSources(wrapper, message.sources ?? [], message.retrievalUnavailable === true);
+        this.renderSources(wrapper, analysis, message.retrievalUnavailable === true);
       }
     }
   }
@@ -353,31 +356,61 @@ export class HybridChatView extends ItemView {
     }
   }
 
-  private renderSources(wrapper: HTMLElement, sources: RetrievedSource[], retrievalUnavailable: boolean): void {
-    const details = wrapper.createEl("details", { cls: "ohc-sources" });
-    details.open = shouldExpandSources(sources.length, retrievalUnavailable);
-    details.createEl("summary", { text: `Sources (${sources.length})` });
-    if (sources.length === 0) {
+  private renderSources(wrapper: HTMLElement, analysis: CitationAnalysis | null, retrievalUnavailable: boolean): void {
+    const cited = analysis?.cited ?? [];
+    const uncited = analysis?.uncited ?? [];
+    const total = cited.length + uncited.length;
+    if (total === 0) {
+      const details = wrapper.createEl("details", { cls: "ohc-sources" });
+      details.open = shouldExpandSources(total, retrievalUnavailable);
+      details.createEl("summary", { text: `Sources (${total})` });
       details.createDiv({
         cls: "ohc-no-sources",
         text: retrievalUnavailable ? "Sources unavailable because retrieval failed." : "No readable sources returned.",
       });
       return;
     }
-    const list = details.createEl("ol");
-    for (const source of sources) {
-      const item = list.createEl("li");
-      const button = item.createEl("button", { cls: "ohc-source-link" });
-      button.createSpan({ cls: "ohc-source-label", text: source.title || source.path });
-      const relationLabel = source.retrievalKind === "related" ? " · linked note" : "";
-      button.createSpan({
-        cls: "ohc-source-path",
-        text: `${source.vaultDisplayName} :: ${source.path}${relationLabel}`,
+    if (analysis !== null && analysis.unknownMarkers > 0) {
+      wrapper.createDiv({
+        cls: "ohc-citation-warning",
+        text: "Some citation markers did not match a retrieved source and were left unverified.",
       });
-      button.addEventListener("click", () => void openCitation(this.app, source).then((opened) => {
-        if (!opened) new Notice("Citation target is invalid or unavailable.");
-      }));
     }
+    if (cited.length === 0) {
+      wrapper.createDiv({ cls: "ohc-no-citations", text: "This answer did not cite a retrieved source." });
+      const details = wrapper.createEl("details", { cls: "ohc-sources ohc-sources-uncited" });
+      details.open = false;
+      details.createEl("summary", { text: `Other retrieved sources (${uncited.length})` });
+      const list = details.createEl("ul");
+      for (const { source, retrievalNumber } of uncited) this.addSourceButton(list.createEl("li"), source, retrievalNumber);
+      return;
+    }
+    const citedDetails = wrapper.createEl("details", { cls: "ohc-sources ohc-sources-cited" });
+    citedDetails.open = true;
+    citedDetails.createEl("summary", { text: `Cited sources (${cited.length})` });
+    const citedList = citedDetails.createEl("ol");
+    for (const { source } of cited) this.addSourceButton(citedList.createEl("li"), source, null);
+    if (uncited.length > 0) {
+      const uncitedDetails = wrapper.createEl("details", { cls: "ohc-sources ohc-sources-uncited" });
+      uncitedDetails.open = false;
+      uncitedDetails.createEl("summary", { text: `Other retrieved sources (${uncited.length})` });
+      const uncitedList = uncitedDetails.createEl("ul");
+      for (const { source, retrievalNumber } of uncited) this.addSourceButton(uncitedList.createEl("li"), source, retrievalNumber);
+    }
+  }
+
+  private addSourceButton(item: HTMLElement, source: RetrievedSource, retrievalRank: number | null): void {
+    const button = item.createEl("button", { cls: "ohc-source-link" });
+    button.createSpan({ cls: "ohc-source-label", text: source.title || source.path });
+    const relationLabel = source.retrievalKind === "related" ? " · linked note" : "";
+    const rankPrefix = retrievalRank !== null ? `Rank ${retrievalRank} · ` : "";
+    button.createSpan({
+      cls: "ohc-source-path",
+      text: `${rankPrefix}${source.vaultDisplayName} :: ${source.path}${relationLabel}`,
+    });
+    button.addEventListener("click", () => void openCitation(this.app, source).then((opened) => {
+      if (!opened) new Notice("Citation target is invalid or unavailable.");
+    }));
   }
 
   private async newSession(): Promise<void> {
@@ -483,15 +516,33 @@ class ConfirmMessageDeleteModal extends Modal {
 function sessionToMarkdown(session: ChatSession): string {
   const lines = [`# ${session.name}`, ""];
   for (const message of session.messages) {
-    lines.push(`## ${message.role === "user" ? "You" : "Assistant"}`, "", message.content, "");
-    if (message.role === "assistant" && message.sources?.length) {
-      lines.push("### Sources", "");
-      message.sources.forEach((source, index) => {
+    const sources = message.role === "assistant" ? message.sources ?? [] : [];
+    const analysis = sources.length > 0 ? analyzeCitations(message.content, sources) : null;
+    lines.push(`## ${message.role === "user" ? "You" : "Assistant"}`, "", analysis ? analysis.content : displayMessageContent(message), "");
+    if (message.role === "assistant" && sources.length > 0) {
+      const sourceLink = (source: RetrievedSource): string => {
         const uri = buildObsidianOpenUri(source.obsidianVaultName, source.path);
         const label = `${source.vaultDisplayName} :: ${source.path}`;
-        lines.push(uri ? `${index + 1}. [${label}](${uri})` : `${index + 1}. ${label}`);
-      });
-      lines.push("");
+        return uri ? `[${label}](${uri})` : label;
+      };
+      if (analysis && analysis.cited.length > 0) {
+        lines.push("### Cited sources", "");
+        for (const { source, number } of analysis.cited) lines.push(`${number}. ${sourceLink(source)}`);
+        lines.push("");
+        if (analysis.uncited.length > 0) {
+          lines.push("### Other retrieved sources", "");
+          for (const { source, retrievalNumber } of analysis.uncited) {
+            lines.push(`- Rank ${retrievalNumber}: ${sourceLink(source)}`);
+          }
+          lines.push("");
+        }
+      } else {
+        lines.push("This answer did not cite a retrieved source.", "", "### Other retrieved sources", "");
+        for (const { source, retrievalNumber } of analysis?.uncited ?? []) {
+          lines.push(`- Rank ${retrievalNumber}: ${sourceLink(source)}`);
+        }
+        lines.push("");
+      }
     }
   }
   return lines.join("\n");

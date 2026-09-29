@@ -135,8 +135,22 @@
   padding-top: var(--size-4-2);
 }
 
-.ohc-sources ol {
+.ohc-sources ol,
+.ohc-sources ul {
   padding-left: var(--size-4-5);
+}
+
+.ohc-sources-uncited summary {
+  color: var(--text-muted);
+}
+
+.ohc-sources-uncited .ohc-source-label {
+  color: var(--text-muted);
+}
+
+.ohc-no-citations {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
 }
 
 .ohc-source-link {
@@ -163,6 +177,12 @@
 }
 
 .ohc-truncation-note {
+  color: var(--text-warning);
+  font-size: var(--font-ui-smaller);
+  margin-top: var(--size-4-2);
+}
+
+.ohc-citation-warning {
   color: var(--text-warning);
   font-size: var(--font-ui-smaller);
   margin-top: var(--size-4-2);
