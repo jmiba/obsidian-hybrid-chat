@@ -4,9 +4,15 @@ on:
   push:
     tags:
       - "*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and repair
+        required: true
+        type: string
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -21,6 +27,8 @@ jobs:
     steps:
       - name: Check out tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -34,7 +42,7 @@ jobs:
 
       - name: Build release package
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: npm run package-release
 
       - name: Attest Obsidian release assets
@@ -42,30 +50,37 @@ jobs:
         with:
           subject-checksums: dist/release/checksums.sha256
 
-      - name: Create draft release
+      - name: Create or repair release assets
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          if gh release view "${RELEASE_TAG}" --json tagName >/dev/null 2>&1; then
-            echo "::error::Release ${RELEASE_TAG} already exists; refusing to create a competing release. Resolve it and re-run."
-            exit 1
+          if ! gh release view "${RELEASE_TAG}" --json tagName >/dev/null 2>&1; then
+            release_notes="$(node scripts/release-notes.mjs "${RELEASE_TAG}")"
+            gh release create "${RELEASE_TAG}" --verify-tag --title "${RELEASE_TAG}" \
+              --generate-notes --notes "${release_notes}" --draft
           fi
-          release_notes="$(node scripts/release-notes.mjs "${RELEASE_TAG}")"
-          draft_url="$(gh release create "${RELEASE_TAG}" --verify-tag --title "${RELEASE_TAG}" --generate-notes --notes "${release_notes}" --draft dist/release/main.js dist/release/manifest.json dist/release/styles.css | tail -n 1)"
 
-          # GitHub gives unpublished drafts an untagged-* preview URL even when
-          # their tag_name is correct. Verify the release metadata instead.
-          release_state="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-            --jq ".[] | select(.tag_name == \"${RELEASE_TAG}\") | [.id, .tag_name, .draft] | @tsv")"
-          if [[ -z "${release_state}" || "${release_state}" == *$'\n'* ]]; then
-            echo "::error::Expected exactly one draft release for ${RELEASE_TAG}."
-            exit 1
-          fi
+          release_state="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            --jq '[.id, .tag_name, .draft] | @tsv')"
           IFS=$'\t' read -r release_id actual_tag is_draft <<< "${release_state}"
-          if [[ -z "${release_id}" || "${actual_tag}" != "${RELEASE_TAG}" || "${is_draft}" != "true" ]]; then
-            echo "::error::Created release metadata is invalid: id=${release_id}, tag=${actual_tag}, draft=${is_draft}."
+          if [[ -z "${release_id}" || "${actual_tag}" != "${RELEASE_TAG}" ]]; then
+            echo "::error::Release metadata is invalid: id=${release_id}, tag=${actual_tag}."
             exit 1
           fi
-          echo "Draft release ${release_id} verified for tag ${actual_tag}: ${draft_url}"
+
+          asset_names="$(gh release view "${RELEASE_TAG}" --json assets --jq '.assets[].name')"
+          verify_dir="$(mktemp -d)"
+          trap 'rm -rf "${verify_dir}"' EXIT
+          for asset in main.js manifest.json styles.css; do
+            if ! printf '%s\n' "${asset_names}" | grep -Fqx -- "${asset}"; then
+              gh release upload "${RELEASE_TAG}" "dist/release/${asset}"
+            fi
+            gh release download "${RELEASE_TAG}" --pattern "${asset}" --dir "${verify_dir}"
+            if ! cmp -s "dist/release/${asset}" "${verify_dir}/${asset}"; then
+              echo "::error::Release ${RELEASE_TAG} asset ${asset} differs from the tagged build."
+              exit 1
+            fi
+          done
+          echo "Release ${release_id} verified for tag ${actual_tag} (draft=${is_draft}); all three plugin assets match the tagged build."
