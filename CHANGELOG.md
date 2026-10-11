@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.9 — 2026-10-11
+
+### Fixed
+
+- Stop showing "This answer did not cite a retrieved source." while the answer is still streaming. A neutral source list is shown until generation finishes, then the final cited and uncited presentation appears.
+
 ## 0.1.8 — 2026-09-29
 
 ### Improved

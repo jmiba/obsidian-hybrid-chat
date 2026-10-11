@@ -323,7 +323,7 @@ export class HybridChatView extends ItemView {
       this.renderTruncation(wrapper, message);
       this.renderFailures(wrapper, message);
       if (shouldShowSources(isWorking, this.sourcesRevealed.has(message.id))) {
-        this.renderSources(wrapper, analysis, message.retrievalUnavailable === true);
+        this.renderSources(wrapper, analysis, message.retrievalUnavailable === true, isWorking);
       }
     }
   }
@@ -356,7 +356,7 @@ export class HybridChatView extends ItemView {
     }
   }
 
-  private renderSources(wrapper: HTMLElement, analysis: CitationAnalysis | null, retrievalUnavailable: boolean): void {
+  private renderSources(wrapper: HTMLElement, analysis: CitationAnalysis | null, retrievalUnavailable: boolean, isWorking: boolean): void {
     const cited = analysis?.cited ?? [];
     const uncited = analysis?.uncited ?? [];
     const total = cited.length + uncited.length;
@@ -368,6 +368,17 @@ export class HybridChatView extends ItemView {
         cls: "ohc-no-sources",
         text: retrievalUnavailable ? "Sources unavailable because retrieval failed." : "No readable sources returned.",
       });
+      return;
+    }
+    if (isWorking) {
+      // The answer is still streaming, so its citation state is not final.
+      // List the retrieved sources without claiming which ones were cited.
+      const details = wrapper.createEl("details", { cls: "ohc-sources ohc-sources-pending" });
+      details.open = false;
+      details.createEl("summary", { text: `Sources (${total})` });
+      const list = details.createEl("ol");
+      const all = [...cited, ...uncited].sort((left, right) => left.retrievalNumber - right.retrievalNumber);
+      for (const item of all) this.addSourceButton(list.createEl("li"), item.source, item.retrievalNumber);
       return;
     }
     if (analysis !== null && analysis.unknownMarkers > 0) {
