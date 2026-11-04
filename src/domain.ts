@@ -26,6 +26,13 @@ export interface VaultSelection {
   vaultIds: string[];
 }
 
+export interface PreviewAnchor {
+  headingPath: string | null;
+  matchText: string;
+  charStart: number | null;
+  charEnd: number | null;
+}
+
 export interface SearchResult {
   path: string;
   title: string;
@@ -33,6 +40,8 @@ export interface SearchResult {
   rank: number;
   retrievalKind?: "direct" | "related";
   relatedFromPath?: string;
+  previewAnchors?: PreviewAnchor[];
+  primaryAnchorIndex?: number;
 }
 
 export interface NamespacedSearchResult extends SearchResult {

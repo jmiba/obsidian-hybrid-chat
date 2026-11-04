@@ -13,7 +13,7 @@ import type HybridChatPlugin from "./main";
 import type { ChatMessage, ChatSession, RetrievedSource, VaultSelection } from "./domain";
 import { analyzeCitations, displayMessageContent, type CitationAnalysis } from "./citation-analysis";
 import { buildGroundedSystemPrompt, packContext } from "./context-packer";
-import { buildObsidianOpenUri, openCitation } from "./citation-mapper";
+import { buildSourceOpenUri, openCitation } from "./citation-mapper";
 import { appendRequestedProperties, parsePropertyDirectives } from "./property-directives";
 import {
   chatWorkLabel,
@@ -532,7 +532,7 @@ function sessionToMarkdown(session: ChatSession): string {
     lines.push(`## ${message.role === "user" ? "You" : "Assistant"}`, "", analysis ? analysis.content : displayMessageContent(message), "");
     if (message.role === "assistant" && sources.length > 0) {
       const sourceLink = (source: RetrievedSource): string => {
-        const uri = buildObsidianOpenUri(source.obsidianVaultName, source.path);
+        const uri = buildSourceOpenUri(source);
         const label = `${source.vaultDisplayName} :: ${source.path}`;
         return uri ? `[${label}](${uri})` : label;
       };

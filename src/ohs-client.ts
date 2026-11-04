@@ -1,3 +1,4 @@
+import { parsePreviewAnchors } from "./preview-anchors";
 import type { SearchResult } from "./domain";
 import { McpHttpClient, type McpTool, type McpToolResult } from "./mcp-http-client";
 
@@ -214,6 +215,7 @@ export function buildOhsSearchArguments(
     mode: "hybrid",
     limit,
     snippet_length: 600,
+    anchors: true,
     rerank,
     ...(frontmatter.length > 0 ? { frontmatter } : {}),
   };
@@ -227,6 +229,7 @@ export function buildOhsRelatedArguments(path: string, frontmatter: string[] = [
     direction: "both",
     link_type: "all",
     snippet_length: 600,
+    anchors: true,
     ...(frontmatter.length > 0 ? { frontmatter } : {}),
   };
 }
@@ -237,8 +240,8 @@ export function adaptSearchArgumentsForTool(args: JsonRecord, inputSchema: unkno
   const compatible = { ...args };
   if (!properties) return compatible;
   const optionalNames = args.related === true
-    ? ["direction", "link_type", "frontmatter", "snippet_length"]
-    : ["mode", "rerank", "frontmatter", "snippet_length"];
+    ? ["direction", "link_type", "frontmatter", "snippet_length", "anchors"]
+    : ["mode", "rerank", "frontmatter", "snippet_length", "anchors"];
   for (const optionalName of optionalNames) {
     if (!Object.prototype.hasOwnProperty.call(properties, optionalName)) delete compatible[optionalName];
   }
@@ -309,6 +312,7 @@ function parseSearchResults(payload: unknown): SearchResult[] {
     const path = asString(value.path);
     if (!path) return [];
     return [{
+      ...parsePreviewAnchors(value),
       path,
       title: asString(value.title) || path.replace(/\.md$/i, "").split("/").pop() || path,
       snippet: asString(value.snippet),

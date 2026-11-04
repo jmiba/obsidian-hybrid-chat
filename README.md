@@ -2,14 +2,14 @@
 
 Hybrid Chat is a desktop-only Obsidian 1.13+ plugin that provides federated, provider-neutral RAG chat over existing [Obsidian Hybrid Search (OHS)](https://github.com/flowing-abyss/obsidian-hybrid-search) services.
 
-It does **not** create a vector index, read OHS SQLite databases, or duplicate indexing. Retrieval is read-only: the plugin calls only the OHS MCP `search` and `read` tools. The user-invoked copy actions write Markdown to the system clipboard; the plugin never reads clipboard contents and does not create or modify vault notes.
+It does **not** create a vector index, read OHS SQLite databases, or duplicate indexing. Retrieval is read-only and uses the OHS MCP `search` and `read` tools. The explicit connection check can also call the read-only `status` tool. The user-invoked copy actions write Markdown to the system clipboard; the plugin never reads clipboard contents and does not create or modify vault notes.
 
 ## Dependencies
 
 Hybrid Chat is a thin client over existing services and depends on:
 
 - **Obsidian 1.13.0 or newer, desktop only** (macOS, Windows, or Linux). The plugin does not run on mobile or in the Obsidian web app.
-- **One [Obsidian Hybrid Search (OHS)](https://github.com/flowing-abyss/obsidian-hybrid-search) endpoint per vault you want to search** — a running OHS Streamable HTTP MCP endpoint (default `http://127.0.0.1:3939/mcp`). Hybrid Chat does not bundle or start OHS; it only queries the endpoint's `search` and `read` tools read-only.
+- **One [Obsidian Hybrid Search (OHS)](https://github.com/flowing-abyss/obsidian-hybrid-search) endpoint per vault you want to search** — a running OHS Streamable HTTP MCP endpoint (default `http://127.0.0.1:3939/mcp`). Hybrid Chat does not bundle or start OHS; it queries the endpoint's `search` and `read` tools for retrieval and optionally `status` for diagnostics.
 - **One OpenAI-compatible chat provider** — any server exposing `POST /v1/chat/completions`, for example a local LM Studio server (default base URL `http://127.0.0.1:1234/v1`) or a remote HTTPS endpoint. Remote providers must use HTTPS; plain HTTP is accepted only on loopback hosts. Provider API keys are stored as Obsidian `SecretStorage` secrets, never in plugin data.
 - **Building from source only**: Node.js 24 and npm.
 
@@ -41,6 +41,16 @@ Chat window in the right-hand sidebar, source opens in the main editor:
 
 <img width="1225" height="900" alt="Chat window in the right-hand sidebar, source opens in the main editor" src="https://github.com/user-attachments/assets/01ca3e1c-3001-4728-930c-d9409694256e" />
 
+### Opening a citation near its match
+
+New search results request OHS preview anchors when the endpoint supports them. The preferred anchor, heading path, matching text, and available character positions stay attached to the source through retrieval and saved sessions.
+
+For a citation in the current vault, Hybrid Chat opens the note and resolves the anchor against its current text, including unsaved edits. It accounts for frontmatter before checking body-relative offsets. If positions are stale, it looks for the matching text in the indicated heading, then for a unique match in the note. A surviving heading is the final passage fallback. Editor mode selects and centers the passage; reading mode scrolls to its line without switching modes. If no reliable location remains, the note opens normally.
+
+For another vault, citations use the standard Obsidian heading subpath in the open URI. This is a best-effort jump to the anchor's innermost heading; exact character selection is available only in the current vault. Duplicate headings in another vault can be ambiguous. Copied chat source links also include the heading when available. [Obsidian URI heading support](https://help.obsidian.md/Extending+Obsidian/Obsidian+URI)
+
+Existing chat citations without anchors, unsupported OHS endpoints, and notes with unusable anchors continue opening normally. Anchors identify the search match, not the exact sentence supporting every claim in the answer. Source text and anchors remain subject to the same chat-history persistence and synchronization behavior.
+
 ### Reading citations
 
 Hybrid Chat accepts source markers such as `[S1]`, `[S1, S2]`, `[1]`, and `【S1】`, including harmless spacing or invisible characters inside the brackets. It renumbers cited notes in their first-mentioned order, starting at `[1]`. Markers for unknown sources are shown as unverified. Matching a marker to a retrieved note does not independently verify that the note supports the claim.
@@ -57,14 +67,16 @@ Some providers insert narrow no-break spaces between ordinary words, which can p
 - Remote chat endpoints must use HTTPS. Plain HTTP is accepted only for loopback hosts.
 - API keys are stored by Obsidian `SecretStorage` through `SecretComponent`. Plugin data contains only secret identifiers.
 - Chat sessions and retrieved source text are stored in this plugin’s `data.json` so sessions survive restarts. If the vault configuration is synchronized, that plugin data may synchronize too.
+- **OHS content exclusions are search filters, not chat redaction.** `OBSIDIAN_CONTENT_IGNORE_PATTERNS` removes matching text from the search index, but OHS `read` returns the original note content. Excluded passages may still appear in packed excerpts sent to the chat provider and in saved chat history.
 - Source text is marked as untrusted context in the system prompt, but prompt injection remains a model-level risk.
-- This MVP has no note mutation, Redis, embeddings, Graphify, Docling, OCR, direct SQLite access, or OHS reindex/status calls.
+- This MVP has no note mutation, Redis, embeddings, Graphify, Docling, OCR, direct SQLite access, or OHS reindex calls. OHS status is queried only by the explicit connection check in settings.
 
 ## Configuration
 
 In Obsidian settings:
 
 - Register one OHS Streamable HTTP MCP endpoint per vault, including a stable ID, display name, exact Obsidian vault name, and enabled/default-selection state.
+- Use **Check connection** under each registered vault to initialize MCP, discover tools, and query the optional OHS `status` tool. The check reports server/protocol versions, advertised search features, index counts, embedding models, and indexing failures when provided. It uses the configured request timeout and does not search, read notes, load the reranker, or rebuild the index. Results appear in settings and are not saved to plugin data. A successful check confirms connectivity and tool availability, not retrieval quality.
 - Set a per-endpoint request timeout. The default is 60 seconds for each OHS direct search, related-note traversal, or read; a client timeout stops Hybrid Chat from waiting but cannot cancel synchronous database work already running inside OHS.
 - Configure one or more OpenAI-compatible profiles, choose an active profile, and select or create an API-key secret. Use **Refresh** to load model IDs from the provider's `/models` endpoint and choose one, or enter a model ID manually when discovery is unavailable.
 - Optionally customize language, tone, role, or answer structure. Grounding/citation rules remain enforced separately.
@@ -82,7 +94,7 @@ For a balanced increase in recall, start with **24 results per vault**, **10 not
 
 Raise results per vault and notes read together: extra candidates normally cannot affect the answer unless enough globally ranked notes are subsequently read. Also raise the total context budget when reading more notes, or later sources may not fit in the provider prompt. Larger values are not always better; reduce them again when answers become slower or less focused.
 
-The current public OHS contract exposes `search` and batch `read` over stateless Streamable HTTP. Tool prefixes and input schemas are discovered from each endpoint.
+The current public OHS contract exposes `search` and batch `read` over stateless Streamable HTTP. Tool prefixes and input schemas are discovered from each endpoint. Preview anchors are requested only when supported by the advertised search schema.
 
 Streamable HTTP remains the default because multiple clients can share one long-lived OHS indexer and model cache. STDIO is not currently exposed as a Hybrid Chat transport; a future local-only mode would need to own a persistent child process and make its indexing, memory, logging, and cancellation lifecycle explicit.
 
@@ -98,6 +110,20 @@ npm run check
 ```
 
 For manual testing, copy `manifest.json`, `main.js`, and `styles.css` into `<vault>/.obsidian/plugins/hybrid-chat/`, enable the plugin, configure OHS and a chat profile, then use the ribbon icon or **Hybrid Chat: Open chat** command.
+
+### Local multi-query trial
+
+Run a read-only comparison against local OHS endpoints without changing plugin settings:
+
+```bash
+node scripts/trial-multi-query.mjs /path/to/config.json /path/to/cases.json dist/retrieval-trial
+```
+
+The config accepts `endpoints` (the vault registry format), `limit` (default 24 per vault), `maxNotes` (default 10), `rerank` (default true), and `repetitions` (default 2). Each case has an `id`, `query`, and one to three `reformulations`. The multi-query variant retains the original question and adds the reformulations through OHS `queries`; the baseline sends only the original question. This Node.js script accepts loopback endpoints only and uses the plugin's actual cross-vault rank fusion.
+
+The runner checks advertised capabilities, records OHS status, warms both variants, alternates their order, and saves timings, per-vault candidates, failures, and the globally selected candidates to `results.json`. `judgments.json` pools selected candidates without variant labels for manual relevance review. It does not read note bodies, generate answers or reformulations, or assess answer correctness. Timings exclude connection discovery, automatic query generation, and downstream note reads.
+
+Use an ignored directory such as `dist/retrieval-trial` for inputs and results: questions, paths, snippets, and OHS status can contain private information. Review pooled relevance and latency together before considering a retrieval change. Hand-written reformulations test retrieval potential; they do not validate an automatic reformulation model.
 
 ## Releases
 

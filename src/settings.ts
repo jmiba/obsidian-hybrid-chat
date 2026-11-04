@@ -7,7 +7,9 @@ import {
   type SettingDefinition,
   type SettingDefinitionItem,
 } from "obsidian";
+import { parsePreviewAnchors } from "./preview-anchors";
 import type HybridChatPlugin from "./main";
+import { checkOhsConnection } from "./ohs-diagnostics";
 import { DEFAULT_OHS_REQUEST_TIMEOUT_MS } from "./domain";
 import type {
   ChatMessage,
@@ -134,6 +136,8 @@ export function sanitizeSettingsForPersistence(settings: HybridChatSettings): Hy
 export class HybridChatSettingTab extends PluginSettingTab {
   private readonly availableModels = new Map<string, string[]>();
   private readonly loadingModels = new Set<string>();
+  private readonly checkingEndpoints = new Set<OhsEndpointConfig>();
+  private readonly endpointDiagnostics = new Map<OhsEndpointConfig, { url: string; details: string[] }>();
 
   constructor(app: App, private readonly plugin: HybridChatPlugin) {
     super(app, plugin);
@@ -144,6 +148,11 @@ export class HybridChatSettingTab extends PluginSettingTab {
       this.definition(
         "Retrieval and privacy",
         "Retrieval uses only the configured OHS MCP endpoints. API keys are selected from Obsidian SecretStorage and are never written to plugin data.",
+        () => undefined,
+      ),
+      this.definition(
+        "Search exclusions and chat context",
+        "OHS content-ignore rules exclude text from search, but note reads still return the original content. Excluded passages may be included in excerpts sent to your chat provider and saved in chat history. These rules do not redact chat context.",
         () => undefined,
       ),
       {
@@ -361,6 +370,7 @@ export class HybridChatSettingTab extends PluginSettingTab {
         });
         text.inputEl.addEventListener("blur", () => { text.setValue(endpoint.endpoint); });
       })),
+      this.connectionCheckDefinition(endpoint),
       this.definition("Obsidian vault name", "Exact vault name used for current-vault matching and Obsidian:// links.", (setting) => setting.addText((text) => text
         .setValue(endpoint.obsidianVaultName)
         .onChange((value) => { endpoint.obsidianVaultName = value.trim(); this.persist(); }))),
@@ -402,6 +412,49 @@ export class HybridChatSettingTab extends PluginSettingTab {
           this.update();
         }))),
     ];
+  }
+
+  private connectionCheckDefinition(endpoint: OhsEndpointConfig): SettingDefinition {
+    return this.definition(
+      "Connection and diagnostics",
+      "Checks the connection, available tools, and OHS index status using the request timeout below. Does not search or read notes. Results are temporary and are not saved.",
+      (setting) => {
+        const report = this.endpointDiagnostics.get(endpoint);
+        if (report && report.url === endpoint.endpoint) {
+          for (const detail of report.details) setting.descEl.createDiv({ text: detail });
+        }
+        setting.addButton((button) => button
+          .setButtonText(this.checkingEndpoints.has(endpoint) ? "Checking…" : "Check connection")
+          .setDisabled(this.checkingEndpoints.has(endpoint))
+          .onClick(() => { void this.checkEndpoint(endpoint); }));
+      },
+    );
+  }
+
+  private async checkEndpoint(endpoint: OhsEndpointConfig): Promise<void> {
+    if (this.checkingEndpoints.has(endpoint)) return;
+    const snapshot = { ...endpoint };
+    this.checkingEndpoints.add(endpoint);
+    this.endpointDiagnostics.delete(endpoint);
+    this.update();
+    try {
+      const result = await checkOhsConnection(snapshot, this.plugin.manifest.version);
+      if (endpoint.endpoint !== snapshot.endpoint) return;
+      this.endpointDiagnostics.set(endpoint, {
+        url: snapshot.endpoint,
+        details: [result.compatible ? "Connected; required tools are available." : "Connection needs attention.", ...result.details],
+      });
+    } catch (error) {
+      if (endpoint.endpoint !== snapshot.endpoint) return;
+      this.endpointDiagnostics.set(endpoint, {
+        url: snapshot.endpoint,
+        details: [`Connection check failed: ${error instanceof Error ? error.message : String(error)}`,
+          "Verify the MCP endpoint URL and that OHS is running. For model or index errors, inspect OHS diagnostics."],
+      });
+    } finally {
+      this.checkingEndpoints.delete(endpoint);
+      this.update();
+    }
   }
 
   private promptDefinitions(): SettingDefinition[] {
@@ -530,6 +583,7 @@ function sanitizeMessage(message: ChatMessage): ChatMessage {
 
 function sanitizeSource(source: RetrievedSource): RetrievedSource {
   return {
+    ...parsePreviewAnchors(source),
     path: source.path,
     title: source.title,
     snippet: source.snippet,
@@ -644,6 +698,7 @@ function parseSource(value: unknown): RetrievedSource[] {
     path,
     title: asString(item.title),
     snippet: asString(item.snippet),
+    ...parsePreviewAnchors(item),
     rank: boundedInteger(item.rank, 1, Number.MAX_SAFE_INTEGER, 1),
     retrievalKind: item.retrievalKind === "related" ? "related" : "direct",
     relatedFromPath: asString(item.relatedFromPath) || undefined,

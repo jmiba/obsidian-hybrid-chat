@@ -32,6 +32,11 @@ export class McpHttpClient {
   private nextRequestId = 1;
   private protocolVersion?: string;
   private sessionId?: string;
+  private serverInfo?: { name: string; version: string };
+
+  get connectionInfo(): { protocolVersion?: string; name?: string; version?: string } {
+    return { protocolVersion: this.protocolVersion, ...this.serverInfo };
+  }
 
   constructor(
     private readonly endpoint: URL,
@@ -49,6 +54,8 @@ export class McpHttpClient {
       throw new Error(`OHS negotiated unsupported MCP protocol version: ${negotiatedVersion || "missing"}`);
     }
     this.protocolVersion = negotiatedVersion;
+    const serverInfo = asRecord(response.result.serverInfo);
+    this.serverInfo = { name: asString(serverInfo?.name), version: asString(serverInfo?.version) };
     this.sessionId = getHeader(response.headers, "mcp-session-id") || undefined;
     await this.post({
       jsonrpc: "2.0",

@@ -22,6 +22,7 @@ describe("OHS search arguments", () => {
       mode: "hybrid",
       limit: 8,
       snippet_length: 600,
+      anchors: true,
       rerank: true,
     });
   });
@@ -37,6 +38,7 @@ describe("OHS search arguments", () => {
       mode: "hybrid",
       limit: 12,
       snippet_length: 600,
+      anchors: true,
       rerank: true,
     });
   });
@@ -57,6 +59,7 @@ describe("OHS search arguments", () => {
       direction: "both",
       link_type: "all",
       snippet_length: 600,
+      anchors: true,
       frontmatter: ["status:active"],
     });
     expect(adaptSearchArgumentsForTool(args, {

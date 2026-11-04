@@ -1,11 +1,11 @@
 import { vi, describe, expect, it } from "vitest";
 
-vi.mock("obsidian", () => ({ App: class {}, TFile: class {} }));
+vi.mock("obsidian", () => ({ App: class {}, TFile: class {}, MarkdownView: class {} }));
 
-import { TFile } from "obsidian";
+import { MarkdownView, TFile } from "obsidian";
 import type { App } from "obsidian";
 import type { RetrievedSource } from "../src/domain";
-import { buildObsidianOpenUri, isValidVaultRelativePath, openCitation } from "../src/citation-mapper";
+import { buildObsidianOpenUri, buildSourceOpenUri, isValidVaultRelativePath, openCitation } from "../src/citation-mapper";
 
 describe("citation validation", () => {
   it("accepts safe Markdown paths and encodes cross-vault URIs", () => {
@@ -52,5 +52,44 @@ describe("citation validation", () => {
 
     expect(buildObsidianOpenUri("Mail-Vault", ohsPath))
       .toBe(`obsidian://open?vault=Mail-Vault&file=${encodeURIComponent(ohsPath.normalize("NFC"))}`);
+  });
+});
+
+
+describe("citation passage navigation", () => {
+  const raw = "---\ntitle: Note\n---\n# Topic\nBefore\nMatching passage here\n";
+  function setup(mode: "source" | "preview") {
+    const file = Object.assign(new TFile(), { path: "note.md" });
+    const editor = { getValue: () => raw, setSelection: vi.fn(), scrollIntoView: vi.fn() };
+    const view = Object.assign(new MarkdownView({} as never), { file, editor, getMode: () => mode, getViewData: () => raw });
+    const leaf = { view, openFile: vi.fn().mockResolvedValue(undefined), setEphemeralState: vi.fn() };
+    const app = { vault: { getName: () => "Vault", getAbstractFileByPath: () => file }, workspace: { getLeaf: () => leaf } } as unknown as App;
+    const source = { path: "note.md", obsidianVaultName: "Vault", previewAnchors: [{ headingPath: "# Topic", matchText: "Matching passage here", charStart: 0, charEnd: 1 }] } as RetrievedSource;
+    return { app, source, editor, leaf };
+  }
+  it("selects and centers the current matching passage in the editor", async () => {
+    const { app, source, editor } = setup("source");
+    await expect(openCitation(app, source)).resolves.toBe(true);
+    expect(editor.setSelection).toHaveBeenCalledWith({ line: 5, ch: 0 }, { line: 5, ch: 21 });
+    expect(editor.scrollIntoView).toHaveBeenCalledWith({ from: { line: 5, ch: 0 }, to: { line: 5, ch: 21 } }, true);
+  });
+  it("uses line navigation in reading mode without switching modes", async () => {
+    const { app, source, editor, leaf } = setup("preview");
+    await openCitation(app, source);
+    expect(leaf.setEphemeralState).toHaveBeenCalledWith({ line: 5 });
+    expect(editor.setSelection).not.toHaveBeenCalled();
+  });
+  it("still opens the note when every anchor is stale", async () => {
+    const { app, source, editor, leaf } = setup("source");
+    source.previewAnchors = [{ headingPath: null, matchText: "Missing", charStart: 999, charEnd: 1000 }];
+    await expect(openCitation(app, source)).resolves.toBe(true);
+    expect(leaf.openFile).toHaveBeenCalledOnce();
+    expect(editor.setSelection).not.toHaveBeenCalled();
+  });
+  it("encodes cross-vault heading jumps without adding arbitrary URI parameters", () => {
+    const source = { obsidianVaultName: "Other", path: "Notes/My note.md", previewAnchors: [{ headingPath: "# Root > ## Costs & scope", matchText: "Match", charStart: 0, charEnd: 5 }] } as RetrievedSource;
+    expect(buildSourceOpenUri(source)).toBe("obsidian://open?vault=Other&file=Notes%2FMy%20note.md%23Costs%20%26%20scope");
+    source.previewAnchors![0]!.headingPath = "# ^block";
+    expect(buildSourceOpenUri(source)).toBe("obsidian://open?vault=Other&file=Notes%2FMy%20note.md");
   });
 });
