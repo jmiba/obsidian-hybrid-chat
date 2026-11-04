@@ -62,10 +62,12 @@ jobs:
               --generate-notes --notes "${release_notes}" --draft
           fi
 
-          release_state="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
-            --jq '[.id, .tag_name, .draft] | @tsv')"
-          IFS=$'\t' read -r release_id actual_tag is_draft <<< "${release_state}"
-          if [[ -z "${release_id}" || "${actual_tag}" != "${RELEASE_TAG}" ]]; then
+          # The REST tag lookup can return 404 for a newly created draft.
+          release_state="$(gh release view "${RELEASE_TAG}" --json apiUrl,tagName,isDraft \
+            --jq '[.apiUrl, .tagName, .isDraft] | @tsv')"
+          IFS=$'\t' read -r release_api_url actual_tag is_draft <<< "${release_state}"
+          release_id="${release_api_url##*/}"
+          if [[ ! "${release_id}" =~ ^[0-9]+$ || "${actual_tag}" != "${RELEASE_TAG}" ]]; then
             echo "::error::Release metadata is invalid: id=${release_id}, tag=${actual_tag}."
             exit 1
           fi
